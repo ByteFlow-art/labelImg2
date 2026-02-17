@@ -708,6 +708,10 @@ class MainWindow(QMainWindow, WindowMixin):
         else:
             shape = self.canvas.selectedShape
             if shape and shape in self.ShapeItemDict:
+                # When multi-selecting, prevent labelCurrentChanged from
+                # calling selectShape (which would clear multi-selection)
+                if len(self.canvas.selectedShapes) > 1:
+                    self._noSelectionSlot = True
                 item0 = self.ShapeItemDict[shape]
                 index = self.labelModel.indexFromItem(item0)
                 self.labelList.selectRow(index.row())
@@ -834,13 +838,18 @@ class MainWindow(QMainWindow, WindowMixin):
             return False
 
     def copySelectedShape(self):
-        self.addLabel(self.canvas.copySelectedShape())
+        newShapes = self.canvas.copySelectedShape()
+        for shape in newShapes:
+            self.addLabel(shape)
         # fix copy and delete
         self.shapeSelectionChanged(True)
 
 
     def labelCurrentChanged(self, current, previous):
         if current.row() < 0:
+            return
+        # Don't override multi-selection from canvas when label row changes
+        if len(self.canvas.selectedShapes) > 1:
             return
         item0 = self.labelModel.itemFromIndex(self.labelModel.index(current.row(), 0))
         if self.canvas.editing():
@@ -882,7 +891,8 @@ class MainWindow(QMainWindow, WindowMixin):
         #units = - delta / (8 * 15)
         units = - delta / (2 * 15)
         bar = self.scrollBars[orientation]
-        bar.setValue(bar.value() + bar.singleStep() * units)
+        # bar.setValue(bar.value() + bar.singleStep() * units)
+        bar.setValue(int(bar.value() + bar.singleStep() * delta))
 
     def setZoom(self, value):
         self.actions.fitWidth.setChecked(False)
@@ -1020,15 +1030,13 @@ class MainWindow(QMainWindow, WindowMixin):
             # Label xml file and show bound box according to its filename
             vocReader = None
             if self.defaultSaveDir is not None:
-                if self.dirname is not None and os.path.exists(self.dirname):
-                    relname = os.path.relpath(self.filePath, self.dirname)
-                    relname = os.path.splitext(relname)[0]
-                    # TODO: defaultSaveDir changed to another dir need mkdir for subdir
-                    xmlPath = os.path.join(self.defaultSaveDir, relname + XML_EXT)
-                else:
-                    xmlPath = os.path.splitext(filePath)[0] + XML_EXT
-                    if os.path.isfile(xmlPath):
-                        vocReader = self.loadPascalXMLByFilename(xmlPath)
+                relname = os.path.relpath(self.filePath, self.dirname)
+                relname = os.path.splitext(relname)[0]
+                # TODO: defaultSaveDir changed to another dir need mkdir for subdir
+                xmlPath = os.path.join(self.defaultSaveDir, relname + XML_EXT)
+
+                if os.path.exists(xmlPath) and os.path.isfile(xmlPath):
+                    vocReader = self.loadPascalXMLByFilename(xmlPath)
             else:
                 xmlPath = os.path.splitext(filePath)[0] + XML_EXT
                 if os.path.isfile(xmlPath):
@@ -1038,14 +1046,6 @@ class MainWindow(QMainWindow, WindowMixin):
                 if self.image.width() != vocWidth or self.image.height() != vocHeight:
                     #self.errorMessage("Image info not matched", "The width or height of annotation file is not matched with that of the image")
                     self.saveFile()
-
-            imglist = [self.filePath]
-            self.fileModel.setStringList(imglist)
-            if self.fileModel.rowCount() > 0:
-                curIndex = self.fileModel.index(0)
-                self.filesm.blockSignals(True)
-                self.filesm.setCurrentIndex(curIndex, QItemSelectionModel.SelectCurrent)
-                self.filesm.blockSignals(False)
 
             self.canvas.setFocus(True)
             return True
@@ -1255,7 +1255,7 @@ class MainWindow(QMainWindow, WindowMixin):
     
     def saveFile(self, _value=False):
         
-        if self.defaultSaveDir is not None and os.path.exists(self.defaultSaveDir) and self.dirname is not None:
+        if self.defaultSaveDir is not None and len(self.defaultSaveDir):
             if self.filePath:
                 relname = os.path.relpath(self.filePath, self.dirname)
                 relname = os.path.splitext(relname)[0]
@@ -1349,12 +1349,15 @@ class MainWindow(QMainWindow, WindowMixin):
         return os.path.dirname(self.filePath) if self.filePath else '.'
 
     def deleteSelectedShape(self):
-        self.remLabel(self.canvas.deleteSelected())
-        self.setDirty()
-        if self.noShapes():
-            for action in self.actions.onShapesPresent:
-                action.setEnabled(False)
-            self.resetBackSample()
+        deleted = self.canvas.deleteSelected()
+        if deleted:
+            for shape in deleted:
+                self.remLabel(shape)
+            self.setDirty()
+            if self.noShapes():
+                for action in self.actions.onShapesPresent:
+                    action.setEnabled(False)
+                self.resetBackSample()
 
     def labelAsBackground(self):
         self.remAllLabels()

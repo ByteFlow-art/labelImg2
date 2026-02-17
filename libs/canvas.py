@@ -47,6 +47,7 @@ class Canvas(QWidget):
         self.shapes = []
         self.current = None
         self.selectedShape = None  # save the selected shape here
+        self.selectedShapes = []    # multi-selection list
         self.selectedShapeCopy = None
         self.drawingLineColor = QColor(0, 0, 255)
         self.drawingRectColor = QColor(0, 0, 255) 
@@ -218,7 +219,16 @@ class Canvas(QWidget):
                     self.selectedShape.highlightCorner = True
             elif self.selectedShape and self.prevPoint:
                 self.overrideCursor(CURSOR_MOVE)
-                self.boundedMoveShape(self.selectedShape, pos)
+                # Move all selected shapes together
+                if len(self.selectedShapes) > 1:
+                    dp = pos - self.prevPoint
+                    if dp:
+                        for sh in self.selectedShapes:
+                            sh.moveBy(dp)
+                            sh.close()
+                        self.prevPoint = pos
+                else:
+                    self.boundedMoveShape(self.selectedShape, pos)
                 self.shapeMoved.emit()
             self.updateLocalScaleMap(pos.x(), pos.y())
             self.repaint()
@@ -299,11 +309,11 @@ class Canvas(QWidget):
             if self.continueDrawing():
                 pass
             else:
-                self.selectShapePoint(pos)
+                self.selectShapePoint(pos, ev.modifiers())
                 self.prevPoint = pos
                 self.repaint()
         elif ev.button() == Qt.RightButton and self.editing():
-            self.selectShapePoint(pos)
+            self.selectShapePoint(pos, ev.modifiers())
             self.prevPoint = pos
             self.repaint()
 
@@ -409,23 +419,74 @@ class Canvas(QWidget):
         self.deSelectShape()
         shape.selected = True
         self.selectedShape = shape
+        if shape not in self.selectedShapes:
+            self.selectedShapes.append(shape)
         self.setHiding()
         self.selectionChanged.emit(True)
         self.update()
 
-    def selectShapePoint(self, point):
+    def selectShapePoint(self, point, modifiers=None):
         """Select the first shape created which contains this point."""
-        self.deSelectShape()
+        if modifiers is not None:
+            ctrlPressed = modifiers & Qt.ControlModifier
+        else:
+            ctrlPressed = QApplication.keyboardModifiers() & Qt.ControlModifier
+
         if self.selectedVertex():  # A vertex is marked for selection.
+            if not ctrlPressed:
+                self.deSelectShape()
             index, shape = self.hVertex, self.hShape
             shape.highlightVertex(index, shape.MOVE_VERTEX)
-            self.selectShape(shape)
+            if ctrlPressed:
+                self._addToSelection(shape)
+            else:
+                self.selectShape(shape)
             return
+
         for shape in reversed(self.shapes):
             if self.isVisible(shape) and shape.containsPoint(point):
-                self.selectShape(shape)
+                if ctrlPressed:
+                    # Toggle shape in/out of multi-selection
+                    if shape in self.selectedShapes:
+                        self._removeFromSelection(shape)
+                    else:
+                        self._addToSelection(shape)
+                else:
+                    # If this shape is already in a multi-selection, keep the group selected
+                    if shape in self.selectedShapes and len(self.selectedShapes) > 1:
+                        self.selectedShape = shape
+                    else:
+                        self.deSelectShape()
+                        self.selectShape(shape)
                 self.calculateOffsets(shape, point)
                 return
+
+        # Clicked on empty area
+        if not ctrlPressed:
+            self.deSelectShape()
+
+    def _addToSelection(self, shape):
+        """Add a shape to the multi-selection list."""
+        shape.selected = True
+        if shape not in self.selectedShapes:
+            self.selectedShapes.append(shape)
+        self.selectedShape = shape
+        self.setHiding()
+        self.selectionChanged.emit(True)
+        self.update()
+
+    def _removeFromSelection(self, shape):
+        """Remove a shape from the multi-selection list."""
+        shape.selected = False
+        if shape in self.selectedShapes:
+            self.selectedShapes.remove(shape)
+        # Update selectedShape to the last remaining selection, or None
+        if self.selectedShapes:
+            self.selectedShape = self.selectedShapes[-1]
+        else:
+            self.selectedShape = None
+        self.selectionChanged.emit(bool(self.selectedShapes))
+        self.update()
 
     def calculateOffsets(self, shape, point):
         rect = shape.boundingRect()
@@ -602,35 +663,64 @@ class Canvas(QWidget):
         return False
 
     def deSelectShape(self):
+        for sh in self.selectedShapes:
+            sh.selected = False
+        self.selectedShapes = []
         if self.selectedShape:
-            self.selectedShape.selected = False
             self.selectedShape = None
             self.setHiding(False)
             self.selectionChanged.emit(False)
             self.update()
 
     def deleteSelected(self):
-        if self.selectedShape:
+        if self.selectedShapes:
+            deleted = list(self.selectedShapes)
+            for sh in deleted:
+                if sh in self.shapes:
+                    self.shapes.remove(sh)
+                sh.selected = False
+            self.selectedShapes = []
+            self.selectedShape = None
+            self.update()
+            return deleted
+        elif self.selectedShape:
             shape = self.selectedShape
             self.shapes.remove(self.selectedShape)
             self.selectedShape = None
             self.update()
-            return shape
+            return [shape]
+        return []
         
     def deleteAll(self):
         self.shapes.clear()
         self.selectedShape = None
+        self.selectedShapes = []
         self.update()
 
     def copySelectedShape(self):
-        if self.selectedShape:
+        if self.selectedShapes:
+            shapesToCopy = list(self.selectedShapes)
+            self.deSelectShape()
+            newShapes = []
+            for original in shapesToCopy:
+                shape = original.copy()
+                self.shapes.append(shape)
+                shape.selected = True
+                self.selectedShapes.append(shape)
+                self.boundedShiftShape(shape)
+                newShapes.append(shape)
+            self.selectedShape = newShapes[-1] if newShapes else None
+            return newShapes
+        elif self.selectedShape:
             shape = self.selectedShape.copy()
             self.deSelectShape()
             self.shapes.append(shape)
             shape.selected = True
             self.selectedShape = shape
+            self.selectedShapes.append(shape)
             self.boundedShiftShape(shape)
-            return shape
+            return [shape]
+        return []
 
     def boundedShiftShape(self, shape):
         # Try to move in one direction, and if it fails in another.
@@ -683,6 +773,7 @@ class Canvas(QWidget):
             self.selectedShapeCopy.paint(p)
 
         # Paint rect
+        # Paint rect
         if self.current is not None and len(self.line) == 2:
             leftTop = self.line[0]
             rightBottom = self.line[1]
@@ -691,15 +782,19 @@ class Canvas(QWidget):
             p.setPen(self.drawingRectColor)
             brush = QBrush(Qt.BDiagPattern)
             p.setBrush(brush)
+            # p.drawRect(leftTop.x(), leftTop.y(), rectWidth, rectHeight)
             p.drawRect(int(leftTop.x()), int(leftTop.y()), int(rectWidth), int(rectHeight))
+
 
         if (self.drawing() or self.continueDrawing()) and not self.prevPoint.isNull() and not self.outOfPixmap(self.prevPoint):
             oldmode = p.compositionMode()
             p.setCompositionMode(QPainter.RasterOp_SourceXorDestination)
             p.setPen(QPen(QColor(255,255,255), 1/self.scale)) # TODO : limit pen width
 
+            # p.drawLine(self.prevPoint.x(), 0, self.prevPoint.x(), self.pixmap.height())
             p.drawLine(int(self.prevPoint.x()), 0, int(self.prevPoint.x()), int(self.pixmap.height()))
-            p.drawLine(0, int(self.prevPoint.y()), int(self.pixmap.width()), int(self.prevPoint.y()))
+            # p.drawLine(0, self.prevPoint.y(), self.pixmap.width(), self.prevPoint.y())
+            p.drawLine(0, int(self.prevPoint.y()), self.pixmap.width(), int(self.prevPoint.y()))
             p.setCompositionMode(oldmode)
 
         self.setAutoFillBackground(True)
@@ -926,41 +1021,35 @@ class Canvas(QWidget):
         return False
 
     def moveOnePixel(self, direction):
-        # print(self.selectedShape.points)
-        if direction == 'Left' and not self.moveOutOfBound(QPointF(-1.0, 0)):
-            # print("move Left one pixel")
-            self.selectedShape.points[0] += QPointF(-1.0, 0)
-            self.selectedShape.points[1] += QPointF(-1.0, 0)
-            self.selectedShape.points[2] += QPointF(-1.0, 0)
-            self.selectedShape.points[3] += QPointF(-1.0, 0)
-            self.selectedShape.center += QPointF(-1.0, 0)
-        elif direction == 'Right' and not self.moveOutOfBound(QPointF(1.0, 0)):
-            # print("move Right one pixel")
-            self.selectedShape.points[0] += QPointF(1.0, 0)
-            self.selectedShape.points[1] += QPointF(1.0, 0)
-            self.selectedShape.points[2] += QPointF(1.0, 0)
-            self.selectedShape.points[3] += QPointF(1.0, 0)
-            self.selectedShape.center += QPointF(1.0, 0)
-        elif direction == 'Up' and not self.moveOutOfBound(QPointF(0, -1.0)):
-            # print("move Up one pixel")
-            self.selectedShape.points[0] += QPointF(0, -1.0)
-            self.selectedShape.points[1] += QPointF(0, -1.0)
-            self.selectedShape.points[2] += QPointF(0, -1.0)
-            self.selectedShape.points[3] += QPointF(0, -1.0)
-            self.selectedShape.center += QPointF(0, -1.0)
-        elif direction == 'Down' and not self.moveOutOfBound(QPointF(0, 1.0)):
-            # print("move Down one pixel")
-            self.selectedShape.points[0] += QPointF(0, 1.0)
-            self.selectedShape.points[1] += QPointF(0, 1.0)
-            self.selectedShape.points[2] += QPointF(0, 1.0)
-            self.selectedShape.points[3] += QPointF(0, 1.0)
-            self.selectedShape.center += QPointF(0, 1.0)
+        # Move all selected shapes by one pixel
+        dirMap = {
+            'Left': QPointF(-1.0, 0),
+            'Right': QPointF(1.0, 0),
+            'Up': QPointF(0, -1.0),
+            'Down': QPointF(0, 1.0),
+        }
+        step = dirMap.get(direction)
+        if step is None:
+            return
+        shapesToMove = self.selectedShapes if self.selectedShapes else ([self.selectedShape] if self.selectedShape else [])
+        # Check bounds for all shapes
+        for sh in shapesToMove:
+            points = [p + step for p in sh.points]
+            if any(self.outOfPixmap(p) for p in points):
+                return
+        for sh in shapesToMove:
+            for i in range(len(sh.points)):
+                sh.points[i] += step
+            sh.center += step
         self.shapeMoved.emit()
         self.repaint()
 
     def moveOutOfBound(self, step):
-        points = [p1+p2 for p1, p2 in zip(self.selectedShape.points, [step]*4)]
-        return True in map(self.outOfPixmap, points)
+        # Kept for backward compatibility
+        if self.selectedShape:
+            points = [p1+p2 for p1, p2 in zip(self.selectedShape.points, [step]*4)]
+            return True in map(self.outOfPixmap, points)
+        return False
 
     def setLastLabel(self, text, line_color  = None, fill_color = None, extra_text=''):
         assert text
@@ -994,6 +1083,8 @@ class Canvas(QWidget):
     def loadPixmap(self, pixmap):
         self.pixmap = pixmap
         self.shapes = []
+        self.selectedShapes = []
+        self.selectedShape = None
         self.repaint()
 
     def loadShapes(self, shapes):
