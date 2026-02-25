@@ -653,7 +653,6 @@ class MainWindow(QMainWindow, WindowMixin):
                 
                 self.labelList.earlyCommit()
                 if self.dirty is True:
-                    print(len(self.canvas.shapes), self.back_sample)
                     if len(self.canvas.shapes) > 0 or self.back_sample:
                         self.fileModel.setData(previous, len(self.canvas.shapes), Qt.BackgroundRole)
                         self.saveFile()
@@ -1030,17 +1029,19 @@ class MainWindow(QMainWindow, WindowMixin):
             # Label xml file and show bound box according to its filename
             vocReader = None
             if self.defaultSaveDir is not None:
-                relname = os.path.relpath(self.filePath, self.dirname)
-                relname = os.path.splitext(relname)[0]
-                # TODO: defaultSaveDir changed to another dir need mkdir for subdir
-                xmlPath = os.path.join(self.defaultSaveDir, relname + XML_EXT)
-
-                if os.path.exists(xmlPath) and os.path.isfile(xmlPath):
-                    vocReader = self.loadPascalXMLByFilename(xmlPath)
+                if self.dirname is not None and os.path.exists(self.dirname):
+                    relname = os.path.relpath(self.filePath, self.dirname)
+                    relname = os.path.splitext(relname)[0]
+                    # TODO: defaultSaveDir changed to another dir need mkdir for subdir
+                    xmlPath = os.path.join(self.defaultSaveDir, relname + XML_EXT)
+                else:
+                    xmlPath = os.path.splitext(filePath)[0] + XML_EXT
             else:
                 xmlPath = os.path.splitext(filePath)[0] + XML_EXT
-                if os.path.isfile(xmlPath):
-                    vocReader = self.loadPascalXMLByFilename(xmlPath)
+
+            if os.path.isfile(xmlPath):
+                vocReader = self.loadPascalXMLByFilename(xmlPath)
+
             if vocReader is not None:
                 vocWidth, vocHeight, _ = vocReader.getSize()
                 if self.image.width() != vocWidth or self.image.height() != vocHeight:
@@ -1252,22 +1253,36 @@ class MainWindow(QMainWindow, WindowMixin):
             if isinstance(filename, (tuple, list)):
                 filename = filename[0]
             self.loadFile(filename)
-    
+
+            if self.filePath is not None:
+                imglist = [self.filePath]
+                self.fileModel.setStringList(imglist)
+                if self.fileModel.rowCount() > 0:
+                    curIndex = self.fileModel.index(0)
+                    self.filesm.blockSignals(True)
+                    self.filesm.setCurrentIndex(curIndex, QItemSelectionModel.SelectCurrent)
+                    self.filesm.blockSignals(False)
+
+    def saveLocal(self, file_path):
+        imgFileDir = os.path.dirname(file_path)
+        imgFileName = os.path.basename(file_path)
+        savedFileName = os.path.splitext(imgFileName)[0]
+        savedPath = os.path.join(imgFileDir, savedFileName)
+        self._saveFile(savedPath if self.labelFile
+                    else self.saveFileDialog())
     def saveFile(self, _value=False):
         
         if self.defaultSaveDir is not None and len(self.defaultSaveDir):
             if self.filePath:
-                relname = os.path.relpath(self.filePath, self.dirname)
-                relname = os.path.splitext(relname)[0]
-                savedPath = os.path.join(self.defaultSaveDir, relname)
-                self._saveFile(savedPath)
+                if self.dirname is not None and os.path.exists(self.dirname):
+                    relname = os.path.relpath(self.filePath, self.dirname)
+                    relname = os.path.splitext(relname)[0]
+                    savedPath = os.path.join(self.defaultSaveDir, relname)
+                    self._saveFile(savedPath)
+                else:
+                    self.saveLocal(self.filePath)
         else:
-            imgFileDir = os.path.dirname(self.filePath)
-            imgFileName = os.path.basename(self.filePath)
-            savedFileName = os.path.splitext(imgFileName)[0]
-            savedPath = os.path.join(imgFileDir, savedFileName)
-            self._saveFile(savedPath if self.labelFile
-                           else self.saveFileDialog())
+            self.saveLocal(self.filePath)
             
     def removeFile(self):
         if self.defaultSaveDir is not None and len(self.defaultSaveDir):
