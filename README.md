@@ -87,38 +87,33 @@
 
 ---
 
-## 🛠️ 安装与使用指南 (Installation & Quick Start)
+## 🛠️ 安装、启动与卸载指南 (Installation, Run & Clean)
 
-### 🔹 模式一：官方安装包 (.zip 推荐) 【🌟 零拦截最简模式】
+### 🔹 模式一：官方图形化安装包 (.zip 推荐) 【🌟 零拦截最简模式】
 1. 前往本项目的 **[GitHub Releases 下载页面](https://github.com/ByteFlow-art/labelImg2/releases)**；
-2. 下载 `LabelImg2_Setup_v1.0.0.zip`（仅 ~48MB，秒级下载完成）；
-3. 解压后，双击里面的 **`一键安装LabelImg2.bat`** 或 **`LabelImg2_Setup_v1.0.0.exe`**；
+2. 下载 `LabelImg2_Setup_v1.0.0.zip` 并解压；
+3. 双击里面的 **`一键安装LabelImg2.bat`** 或 **`LabelImg2_Setup_v1.0.0.exe`**；
 4. 进入图形化安装向导，自动配置全部 AI 依赖并在桌面上生成专属 App 图标！
 
-> 💡 **关于 Windows Defender / SmartScreen 提示说明**：
-> 作为开源免费软件（未购买每年数千元的商业数字证书），若您直接运行 `.exe` 时弹出 Windows 蓝色保护窗口：
-> - 点击窗口中的 **「更多信息 (More info)」** -> 点击 **「仍要运行 (Run anyway)」** 即可；
-> - 或直接解压后双击 **`一键安装LabelImg2.bat`**，将自动解除系统标记并秒级开启安装。
+---
+
+### 🔹 模式二：下载源码包 + .exe 免命令行启动 【推荐开发者/便携用户】
+源码包内已内置 **全套专属 App 图标工具**：
+1. 下载源码压缩包并解压；
+2. **首次使用**：双击 **`setup_env.bat`** 或 **`Start_LabelImg2.bat`** 自动初始化环境；
+3. **日常启动**：直接双击根目录下的 **`LabelImg2.exe`**（带专属 App 图标，无黑框静默启动）；
+4. **生成桌面图标**：双击 **`Create_Desktop_Shortcut.bat`** 即可在桌面生成高清图标快捷方式。
 
 ---
 
-
-### 🔹 模式二：下载源码包 + 一键自动化启动 【推荐开发者】
-本仓库配备了**全自动环境检测与依赖安装向导**，即使在**没有任何 Python / Conda 环境的全新电脑**上，也能一键全自动搭建并启动：
-
-1. **克隆或下载本仓库**：
-   ```bash
-   git clone https://github.com/ByteFlow-art/labelImg2.git
-   cd labelImg2
-   ```
-2. **双击启动脚本**：
-   - **直接双击 `Start_LabelImg2.bat`**：
-     - 若已存在 Conda 或虚拟环境，将直接秒启程序；
-     - 若首次运行未检测到依赖，将自动调用 `setup_env.bat` 一键自动配置好 PyQt5、PyTorch、Ultralytics 等全套依赖库！
-   - 也可直接双击运行 **`setup_env.bat`** 手动进入初始化向导。
-
+### 🗑️ 一键彻底卸载与环境清理 (Uninstaller)
+当您需要完全清理软件或重置运行环境时：
+- **GUI 卸载**：双击目录下的 **`Uninstall.exe`**（带专属 App 图标），点击一键清理；
+- **脚本卸载**：双击 **`一键彻底卸载LabelImg2.bat`**；
+- 将自动为您**删除桌面快捷方式、清理本地 Python 虚拟环境 (`.venv`/`python_embed`)、模型缓存与所有临时文件**，实现 0 残留清理。
 
 ---
+
 
 ### 🔹 模式三：手动命令行安装 (Manual Installation)
 
