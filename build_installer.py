@@ -50,6 +50,9 @@ def build_installer():
     if not os.path.exists(icon_path):
         icon_path = os.path.join(ROOT_DIR, "img", "labelImg2.png")
 
+    version_info_path = os.path.join(ROOT_DIR, "version_info.txt")
+    version_arg = [f"--version-file={version_info_path}"] if os.path.exists(version_info_path) else []
+
     out_name = "LabelImg2_Setup_v1.0.0"
 
     cmd = [
@@ -61,6 +64,7 @@ def build_installer():
         f"--icon={icon_path}",
         f"--add-data={payload_zip};.",
         f"--add-data={os.path.join(ROOT_DIR, 'img')};img",
+        *version_arg,
         "--exclude-module=torch",
         "--exclude-module=torchvision",
         "--exclude-module=ultralytics",
@@ -72,6 +76,7 @@ def build_installer():
         os.path.join(ROOT_DIR, "installer_gui.py")
     ]
 
+
     print("\n=======================================================")
     print("正在构建 LabelImg2 独立安装程序 EXE:")
     print(" ".join(cmd))
@@ -82,17 +87,21 @@ def build_installer():
     if result.returncode == 0:
         exe_path = os.path.join(ROOT_DIR, "dist", f"{out_name}.exe")
         zip_path = os.path.join(ROOT_DIR, "dist", f"{out_name}.zip")
+        unblock_bat = os.path.join(ROOT_DIR, "一键安装LabelImg2.bat")
         print("\n=======================================================")
         print(f"[成功] LabelImg2 独立安装程序已成功生成！")
         print(f"安装包路径: {exe_path}")
         print(f"安装包大小: {os.path.getsize(exe_path) / (1024*1024):.2f} MB")
         
-        print("正在自动生成防浏览器拦截的发布压缩包 (ZIP)...")
+        print("正在自动生成防浏览器拦截与防SmartScreen拦截的发布压缩包 (ZIP)...")
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
             zf.write(exe_path, f"{out_name}.exe")
+            if os.path.exists(unblock_bat):
+                zf.write(unblock_bat, "一键安装LabelImg2.bat")
         print(f"[成功] 防拦截安装压缩包已生成: {zip_path}")
         print(f"压缩包大小: {os.path.getsize(zip_path) / (1024*1024):.2f} MB")
         print("=======================================================\n")
+
 
     else:
         print(f"\n[错误] 安装程序构建失败，退出码: {result.returncode}")
