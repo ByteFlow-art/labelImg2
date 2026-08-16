@@ -9,6 +9,7 @@ from .shape import Shape
 from .lib import distance
 from libs.labelFile import LabelFile
 import math
+import time
 
 CURSOR_DEFAULT = Qt.ArrowCursor
 CURSOR_POINT = Qt.PointingHandCursor
@@ -30,8 +31,10 @@ class Canvas(QWidget):
     status = pyqtSignal(str)
 
     cancelDraw = pyqtSignal()
-
     toggleEdit = pyqtSignal(bool)
+    deleteRequested = pyqtSignal()
+    undoRedoRequested = pyqtSignal()
+    singleClickSelected = pyqtSignal()
 
     #CREATE, EDIT = list(range(2))
     CREATE = 0
@@ -150,7 +153,26 @@ class Canvas(QWidget):
         #self.localScalePixmap = self.localScalePixmap.scaled(w * 5, h * 5, Qt.KeepAspectRatio)
 
     def mouseMoveEvent(self, ev):
-        """Update line with last point and current coordinates."""
+        """Update line with mouse movement."""
+        if getattr(self, 'dragIgnoreUntilMouseUp', False):
+            if not (ev.buttons() & Qt.LeftButton):
+                self.dragIgnoreUntilMouseUp = False
+            else:
+                self.restoreCursor()
+                self.overrideCursor(CURSOR_DEFAULT)
+                return
+
+        if hasattr(self, 'pressPos') and self.pressPos and (ev.buttons() & Qt.LeftButton):
+            if (ev.pos() - self.pressPos).manhattanLength() > 4:
+                self.wasDragged = True
+
+        if (ev.buttons() & Qt.LeftButton) and (ev.modifiers() & Qt.AltModifier) and hasattr(self, 'panStartPos') and self.panStartPos:
+            dp = ev.pos() - self.panStartPos
+            self.panStartPos = ev.pos()
+            self.scrollRequest.emit(-dp.x(), Qt.Horizontal)
+            self.scrollRequest.emit(-dp.y(), Qt.Vertical)
+            return
+
         pos = self.transformPos(ev.pos())
 
         # Update coordinates in status bar if image is opened
@@ -301,11 +323,23 @@ class Canvas(QWidget):
 
 
     def mousePressEvent(self, ev):
+        self.setFocus(Qt.MouseFocusReason)
         pos = self.transformPos(ev.pos())
+        self.pressPos = ev.pos()
+        self.wasDragged = False
+
+        if ev.button() == Qt.LeftButton and (ev.modifiers() & Qt.AltModifier):
+            self.panStartPos = ev.pos()
+            self.overrideCursor(CURSOR_GRAB)
+            return
 
         if ev.button() == Qt.LeftButton:
             if self.drawing():
                 self.handleDrawing(pos)
+                # CREATE 模式下不触发选中逻辑，防止误选已有标注框
+                self.prevPoint = pos
+                self.repaint()
+                return
             if self.continueDrawing():
                 pass
             else:
@@ -318,6 +352,21 @@ class Canvas(QWidget):
             self.repaint()
 
     def mouseReleaseEvent(self, ev):
+        if getattr(self, 'dragIgnoreUntilMouseUp', False):
+            self.dragIgnoreUntilMouseUp = False
+            self.wasDragged = False
+            self.pressPos = None
+            self.prevPoint = QPointF()
+            self.restoreCursor()
+            self.overrideCursor(CURSOR_DEFAULT)
+            self.update()
+            return
+        if hasattr(self, 'panStartPos') and self.panStartPos:
+            self.panStartPos = None
+            self.restoreCursor()
+        if ev.button() == Qt.LeftButton and hasattr(self, 'wasDragged') and not self.wasDragged:
+            if self.selectedShape and self.editing():
+                self.singleClickSelected.emit()
         if ev.button() == Qt.RightButton:
             if self.selectedVertex() and self.selectedShape.isRotated:
                 return
@@ -673,6 +722,7 @@ class Canvas(QWidget):
             self.update()
 
     def deleteSelected(self):
+        deleted = []
         if self.selectedShapes:
             deleted = list(self.selectedShapes)
             for sh in deleted:
@@ -681,15 +731,33 @@ class Canvas(QWidget):
                 sh.selected = False
             self.selectedShapes = []
             self.selectedShape = None
-            self.update()
-            return deleted
         elif self.selectedShape:
             shape = self.selectedShape
-            self.shapes.remove(self.selectedShape)
+            if shape in self.shapes:
+                self.shapes.remove(shape)
+            shape.selected = False
             self.selectedShape = None
-            self.update()
-            return [shape]
-        return []
+            deleted = [shape]
+        elif self.hShape:
+            shape = self.hShape
+            if shape in self.shapes:
+                self.shapes.remove(shape)
+            shape.selected = False
+            deleted = [shape]
+
+        self.dragIgnoreUntilMouseUp = True
+        self.hShape = None
+        self.hVertex = None
+        self.prevPoint = QPointF()
+        if hasattr(self, 'pressPos'):
+            self.pressPos = None
+        if hasattr(self, 'panStartPos'):
+            self.panStartPos = None
+        self.wasDragged = False
+        self.restoreCursor()
+        self.overrideCursor(CURSOR_DEFAULT)
+        self.update()
+        return deleted
         
     def deleteAll(self):
         self.shapes.clear()
@@ -698,57 +766,54 @@ class Canvas(QWidget):
         self.update()
 
     def copySelectedShape(self):
+        saved_prev = QPointF(self.prevPoint) if hasattr(self, 'prevPoint') and self.prevPoint else None
+        saved_offsets = (QPointF(self.offsets[0]), QPointF(self.offsets[1])) if hasattr(self, 'offsets') and self.offsets else None
         if self.selectedShapes:
             shapesToCopy = list(self.selectedShapes)
-            self.deSelectShape()
             newShapes = []
             for original in shapesToCopy:
-                shape = original.copy()
-                self.shapes.append(shape)
-                shape.selected = True
-                self.selectedShapes.append(shape)
-                self.boundedShiftShape(shape)
-                newShapes.append(shape)
-            self.selectedShape = newShapes[-1] if newShapes else None
+                # 原地生成副本留在背景，当前被鼠标抓取的原标注框保持选中并继续平滑拖拽
+                duplicate = original.copy()
+                duplicate.selected = False
+                self.shapes.append(duplicate)
+                newShapes.append(duplicate)
+            if saved_prev is not None:
+                self.prevPoint = saved_prev
+            if saved_offsets is not None:
+                self.offsets = saved_offsets
+            self.update()
             return newShapes
         elif self.selectedShape:
-            shape = self.selectedShape.copy()
-            self.deSelectShape()
-            self.shapes.append(shape)
-            shape.selected = True
-            self.selectedShape = shape
-            self.selectedShapes.append(shape)
-            self.boundedShiftShape(shape)
-            return [shape]
+            duplicate = self.selectedShape.copy()
+            duplicate.selected = False
+            self.shapes.append(duplicate)
+            if saved_prev is not None:
+                self.prevPoint = saved_prev
+            if saved_offsets is not None:
+                self.offsets = saved_offsets
+            self.update()
+            return [duplicate]
+        elif self.hShape:
+            duplicate = self.hShape.copy()
+            duplicate.selected = False
+            self.shapes.append(duplicate)
+            self.update()
+            return [duplicate]
         return []
 
     def boundedShiftShape(self, shape):
-        # Try to move in one direction, and if it fails in another.
-        # Give up if both fail.
-        point = shape[0]
-        offset = QPointF(2.0, 2.0)
-        self.calculateOffsets(shape, point)
-        self.prevPoint = point
-        if not self.boundedMoveShape(shape, point - offset):
-            self.boundedMoveShape(shape, point + offset)
+        # Shift shape safely by a small delta without disrupting mouse drag tracking
+        offset = QPointF(10.0, 10.0)
+        shape.moveBy(offset)
+        shape.close()
 
     def paintEvent(self, event):
         if not self.pixmap:
             return super(Canvas, self).paintEvent(event)
 
         p = self._painter
-        
-        #ur = event.rect()
-        #tmppix = QPixmap(ur.size())
-        #p = QPainter(tmppix)
-        #p.translate(-ur.x(), -ur.y())
-        ##p.begin(self)
-
         p.begin(self)
 
-
-
-        #p.setRenderHint(QPainter.Antialiasing)
         p.setRenderHint(QPainter.HighQualityAntialiasing)
         if self.scale < 1.0:
             p.setRenderHint(QPainter.SmoothPixmapTransform)
@@ -758,14 +823,15 @@ class Canvas(QWidget):
 
         p.drawPixmap(0, 0, self.pixmap)
         Shape.scale = self.scale
-        for shape in self.shapes:
+        # Use snapshot list to prevent disappearing shapes due to concurrent modifications
+        for shape in list(self.shapes):
             if (shape.selected or not self._hideBackround) and self.isVisible(shape):
                 if (shape.isRotated and not self.hideRotated) or (not shape.isRotated and not self.hideNormal):
                     shape.fill = shape.selected or shape == self.hShape
                     shape.paint(p)
                 elif self.showCenter:
                     shape.fill = shape.selected or shape == self.hShape
-                    shape.paintNormalCenter(p) #shape.paint(p)
+                    shape.paintNormalCenter(p)
         if self.current:
             self.current.paint(p)
             self.line.paint(p)
@@ -844,6 +910,17 @@ class Canvas(QWidget):
         w, h = self.pixmap.width(), self.pixmap.height()
         return not (0 <= p.x() <= w and 0 <= p.y() <= h)
 
+    def reorderShapesByArea(self):
+        """根据面积从大到小对 shapes 排序: 面积大的在底层(列表前方先画)，面积小的在顶层(列表后方后画且先命中点击)"""
+        def get_shape_area(s):
+            try:
+                rect = s.boundingRect()
+                return rect.width() * rect.height()
+            except Exception:
+                return 0.0
+        self.shapes.sort(key=get_shape_area, reverse=True)
+        self.update()
+
     def finalise(self, continous=False):
         if self.current is None:
             return
@@ -858,7 +935,10 @@ class Canvas(QWidget):
         self.shapes.append(self.current)
         self.current = None
         self.setHiding(False)
-        self.newShape.emit(continous) # TODO:
+        # 先发送 newShape 信号让上层设置 label（setLastLabel 操作 shapes[-1]），
+        # 再按面积重排，避免排序后 shapes[-1] 指向错误的 shape
+        self.newShape.emit(continous)
+        self.reorderShapesByArea()
         self.update()
 
     def closeEnough(self, p1, p2):
@@ -940,15 +1020,37 @@ class Canvas(QWidget):
             v_delta = delta.y()
 
         mods = ev.modifiers()
-        if Qt.ControlModifier == int(mods) and v_delta:
+        if self.selectedShape:
+            # 选中框时，滚轮调整框的大小
+            factor = 1.05 if v_delta > 0 else 0.95
+            self.selectedShape.scaleBy(factor)
+            self.shapeMoved.emit()
+            self.update()
+        elif Qt.ControlModifier == int(mods) and v_delta:
             self.zoomRequest.emit(v_delta)
         else:
-            v_delta and self.scrollRequest.emit(v_delta, Qt.Vertical)
-            h_delta and self.scrollRequest.emit(h_delta, Qt.Horizontal)
+            if v_delta:
+                self.zoomRequest.emit(v_delta)
+            else:
+                h_delta and self.scrollRequest.emit(h_delta, Qt.Horizontal)
         ev.accept()
 
     def keyPressEvent(self, ev):
         key = ev.key()
+        txt = ev.text().lower() if ev.text() else ""
+
+        if key in (Qt.Key_Q, Qt.Key_Delete, Qt.Key_Backspace) or txt == 'q':
+            self.dragIgnoreUntilMouseUp = True
+            self.prevPoint = QPointF()
+            self.pressPos = None
+            self.panStartPos = None
+            self.wasDragged = False
+            self.restoreCursor()
+            self.overrideCursor(CURSOR_DEFAULT)
+            self.deleteRequested.emit()
+            ev.accept()
+            return
+
         if key == Qt.Key_Escape and self.current:
             self.current = None
             self.drawingPolygon.emit(False)
@@ -957,7 +1059,7 @@ class Canvas(QWidget):
             if self.drawing() or self.continueDrawing():
                 self.cancelDraw.emit()
             self.finalise()
-        elif key == Qt.Key_Return or key == Qt.Key_Enter:
+        elif key in (Qt.Key_Return, Qt.Key_Enter):
             if self.canCloseShape():
                 self.finalise()
             if self.selectedShape:
@@ -973,44 +1075,91 @@ class Canvas(QWidget):
             self.moveOnePixel('Up')
         elif key == Qt.Key_Down and self.selectedShape:
             self.moveOnePixel('Down')
-        elif key == Qt.Key_Z and self.selectedShape and\
-             self.selectedShape.isRotated and not self.rotateOutOfBound(0.1):
-            self.selectedShape.rotate(0.1)
-            self.shapeMoved.emit() 
-            self.update()  
-        elif key == Qt.Key_X and self.selectedShape and\
-             self.selectedShape.isRotated and not self.rotateOutOfBound(0.01):
-            self.selectedShape.rotate(0.01) 
-            self.shapeMoved.emit()
-            self.update()  
-        elif key == Qt.Key_C and self.selectedShape and\
-             self.selectedShape.isRotated and not self.rotateOutOfBound(-0.01):
-            self.selectedShape.rotate(-0.01) 
-            self.shapeMoved.emit()
-            self.update()  
-        elif key == Qt.Key_V and self.selectedShape and\
-             self.selectedShape.isRotated and not self.rotateOutOfBound(-0.1):
-            self.selectedShape.rotate(-0.1)
-            self.shapeMoved.emit()
-            self.update()
-        elif key == Qt.Key_F and self.selectedShape and\
-             self.selectedShape.isRotated and not self.rotateOutOfBound(-math.pi/2):
-            self.selectedShape.rotate(-math.pi/2)
+        elif (key == Qt.Key_Z or txt == 'z') and self.selectedShape:
+            self.selectedShape.isRotated = True
+            angle = self.get_dynamic_rotation_angle(1)
+            if not self.rotateOutOfBound(angle):
+                self.selectedShape.rotate(angle)
+                self.shapeMoved.emit() 
+                self.update()
+                deg = abs(angle * 180.0 / math.pi)
+                print(f"[Shortcut Z Terminal] 顺时针旋转标注框 (+{deg:.1f}° 变速调控)", flush=True)
+        elif (key == Qt.Key_V or txt == 'v') and self.selectedShape:
+            self.selectedShape.isRotated = True
+            angle = self.get_dynamic_rotation_angle(-1)
+            if not self.rotateOutOfBound(angle):
+                self.selectedShape.rotate(angle)
+                self.shapeMoved.emit()
+                self.update()
+                deg = abs(angle * 180.0 / math.pi)
+                print(f"[Shortcut V Terminal] 逆时针旋转标注框 (-{deg:.1f}° 变速调控)", flush=True)
+        elif (key == Qt.Key_X or txt == 'x') and self.selectedShape:
+            self.selectedShape.increaseLength()
             self.shapeMoved.emit()
             self.update()
-        elif key == Qt.Key_R:
-            self.hideRotated = not self.hideRotated
-            self.hideRRect.emit(self.hideRotated)
+            print("[Shortcut X Terminal] 增大选中标注框的长 (Length +)", flush=True)
+        elif (key == Qt.Key_C or txt == 'c') and self.selectedShape:
+            self.selectedShape.increaseWidth()
+            self.shapeMoved.emit()
             self.update()
-        elif key == Qt.Key_N:
+            print("[Shortcut C Terminal] 增大选中标注框的宽 (Width +)", flush=True)
+        elif (key == Qt.Key_F or txt == 'f') and self.selectedShape:
+            self.selectedShape.isRotated = True
+            if not self.rotateOutOfBound(-math.pi/2):
+                self.selectedShape.rotate(-math.pi/2)
+                self.shapeMoved.emit()
+                self.update()
+                print("[Shortcut F Terminal] 旋转标注框 (-90°)", flush=True)
+        elif key == Qt.Key_R or txt == 'r':
+            self.undoRedoRequested.emit()
+            ev.accept()
+            return
+        elif key == Qt.Key_N or txt == 'n':
             self.hideNormal = not self.hideNormal
             self.hideNRect.emit(self.hideNormal)
             self.update()
-        elif key == Qt.Key_O:
+        elif key == Qt.Key_O or txt == 'o':
             self.canOutOfBounding = not self.canOutOfBounding
-        elif key == Qt.Key_B:
+        elif key == Qt.Key_B or txt == 'b':
             self.showCenter = not self.showCenter
             self.update()
+        elif key in (Qt.Key_Q, Qt.Key_Delete, Qt.Key_Backspace) or txt == 'q':
+            self.deleteRequested.emit()
+            ev.accept()
+            return
+
+    def get_dynamic_rotation_angle(self, direction=1):
+        """变速旋转调控：随按键长按时长平滑加速，2秒内从 1.0° 渐进至 1.5°"""
+        import math as _math
+        now = time.time()
+        last_t = getattr(self, '_rot_last_time', 0.0)
+        start_t = getattr(self, '_rot_start_time', None)
+
+        # 判断是否是一次新的按键序列（距上次超过 0.35 秒，或从未按过）
+        if start_t is None or (now - last_t) > 0.35:
+            self._rot_start_time = now
+            start_t = now
+
+        self._rot_last_time = now
+
+        # 计算从首次按下到现在的持续时长（秒）
+        elapsed = now - start_t
+
+        # 变速区间：1.0°→1.5°，2 秒内线性达到峰值
+        base_deg = 1.0
+        max_deg  = 1.5
+        ramp_sec = 2.0
+        t_ratio = min(1.0, elapsed / ramp_sec)
+        deg = base_deg + (max_deg - base_deg) * t_ratio
+        return _math.radians(deg) * direction
+
+
+    def keyReleaseEvent(self, ev):
+        key = ev.key()
+        txt = ev.text().lower() if ev.text() else ""
+        if key in (Qt.Key_Z, Qt.Key_V) or txt in ('z', 'v'):
+            self._rot_start_time = None
+            self._rot_last_time = 0
 
     def rotateOutOfBound(self, angle):
         if self.canOutOfBounding:

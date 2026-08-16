@@ -1,20 +1,58 @@
-icons/.DS_Store
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
 
-resources.py
+# C extensions
+*.so
 
-.idea*
-labelImg.egg-info*
-
-*.pyc
-.*.swp
-
+# Distribution / packaging
+.Python
 build/
+develop-eggs/
 dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+*.spec
 
-tags
-cscope*
-.ycm_extra_conf.py
-.subvimrc
-.vscode
+# Virtual Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+python_embed/
+python_embed.zip
+
+# Model Training & Inference Artifacts (Ultralytics / YOLO)
+runs/detect/
+runs/train/
+runs/test/
+runs/val/
+*.pt.bak
+
+# IDE & Editor Settings
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+/.vs/
+
+# Settings Cache
 *.pkl
-/.vs
+labelImg2Settings*.pkl
+

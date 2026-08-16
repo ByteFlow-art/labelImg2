@@ -1,15 +1,61 @@
-dog
+transcover
+fence
+catwalk
+elevator
+rig_floor
+high_pressure_area
+robotic_arm
+hoisting
 person
-cat
-tv
-car
-meatballs
-marinara sauce
-tomato soup
-chicken noodle soup
-french onion soup
-chicken breast
-ribs
-pulled pork
-hamburger
-cavity
+SafeHat
+No_SafeHat
+SafeBelt
+Block
+SafeBelt_Hook
+DZ_diaoche
+paodao
+Slope
+Guardian
+Mask
+No_Mask
+Goggles
+No_Goggles
+Hammer
+qxtong
+ZT_yydq
+Hole
+Drill_pipe
+Jingkou
+Guardian1
+Phone
+buckets
+person_fallen
+railing
+grab_tool
+check_valve
+mud_pump
+mud_pump_cover
+mud_pump_cover_no
+chain_box
+chain_box_cover
+chain_box_cover_no
+cardan_shaft
+cardan_shaft_no
+hot_work
+face_mask
+pipe_row
+monkey_board
+monkey_board_change
+release_pressure_area
+workwear
+no_workwear
+gloves
+oxygen_cylinder_0
+oxygen_cylinder_1
+acetylene_cylinder_0
+acetylene_cylinder_1
+fire_extinguisher_0
+fire_extinguisher_1
+smoking
+smog
+external_vehicles

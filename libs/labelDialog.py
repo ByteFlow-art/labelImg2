@@ -2,6 +2,7 @@
 from __future__ import absolute_import
 
 import sys
+import re
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
@@ -69,8 +70,10 @@ class LabelDialog(QDialog):
         self.model = CMyListModel(self.listView)
         
 
-        self.model.setStringList(listItem)
+        numbered_items = [f"{idx+1}. {it}" if not re.match(r'^\d+\.\s*', it) else it for idx, it in enumerate(listItem or [])]
+        self.model.setStringList(numbered_items)
         self.listView.setModel(self.model)
+        self.listView.clicked.connect(self.listItemClicked)
 
         self.sm = self.listView.selectionModel()
 
@@ -81,16 +84,19 @@ class LabelDialog(QDialog):
         else:
             self.default_label = None
 
-        self.updateListItems(listItem)
-        
-        
         self.layout.addWidget(self.listView)
         self.layout.addLayout(self.horlayout)
         self.layout.addWidget(bb)
         self.setLayout(self.layout)
 
+    def listItemClicked(self, index):
+        text = self.model.data(index, Qt.DisplayRole)
+        clean_text = re.sub(r'^\d+\.\s*', '', text) if text else ''
+        self.edit.setText(clean_text)
+
     def updateListItems(self, listItem):
-        self.model.setStringList(listItem)
+        numbered_items = [f"{idx+1}. {it}" if not re.match(r'^\d+\.\s*', it) else it for idx, it in enumerate(listItem or [])]
+        self.model.setStringList(numbered_items)
 
     def addLabel(self):
         if not self.edit.text() in self.model.stringList():

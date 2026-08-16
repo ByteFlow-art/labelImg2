@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+<style type="text/css">
+	.st0{fill:#231F20;}
+</style>
+<g>
+	<!-- Folder Contour -->
+	<path class="st0" d="M65.9,30l17.1,17.1l2.9,2.9H90h60v90H10V30H65.9 M70,20H5.7C2.6,20,0,22.6,0,25.7v118.6c0,3.2,2.6,5.7,5.7,5.7h148.6c3.2,0,5.7-2.6,5.7-5.7V45.7c0-3.2-2.6-5.7-5.7-5.7H90L70,20L70,20z"/>
+	<!-- Inner Picture Icon -->
+	<path class="st0" d="M40,65h80v55H40V65z M48,73v39h64V73H48z M55,80h10v10H55V80z M60,105l15-20l15,15l10-10l15,15H60z"/>
+</g>
+</svg>

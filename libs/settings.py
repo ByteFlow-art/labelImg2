@@ -7,10 +7,8 @@ class Settings(object):
     def __init__(self):
         # Be default, the home will be in the same folder as labelImg
         self.data = {}
-        if sys.version_info < (3, 0, 0):
-            self.path = './labelImg2Settings2.pkl'
-        else:
-            self.path = './labelImg2Settings3.pkl'
+        home = os.path.expanduser("~")
+        self.path = os.path.join(home, ".labelImg2Settings3.pkl")
 
     def __setitem__(self, key, value):
         self.data[key] = value

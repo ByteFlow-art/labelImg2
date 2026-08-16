@@ -8,8 +8,25 @@ from PyQt5.QtCore import *
 from PyQt5.QtWidgets import *
 
 
+import os
+import sys
+
+def resource_path(relative_path):
+    """获取资源绝对路径，兼容 PyInstaller 打包与源码运行"""
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.abspath(os.path.dirname(os.path.dirname(__file__))), relative_path)
+
 def newIcon(icon):
-    return QIcon('img/' + icon)
+    for possible in [
+        resource_path(os.path.join('img', icon)),
+        os.path.join('img', icon),
+        icon
+    ]:
+        if os.path.exists(possible):
+            return QIcon(possible)
+    return QIcon(os.path.join('img', icon))
+
 
 
 def newButton(text, icon=None, slot=None):
@@ -73,7 +90,9 @@ def fmtShortcut(text):
 
 
 def generateColorByText(text):
-    s = text #str(utext)
+    if text is None:
+        text = "default"
+    s = str(text)
     hashCode = int(hashlib.sha256(s.encode('utf-8')).hexdigest(), 16)
     r = int((hashCode / 255) % 255)
     g = int((hashCode / 65025)  % 255)

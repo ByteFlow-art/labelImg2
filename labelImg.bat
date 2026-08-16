@@ -1,1 +1,6 @@
-start cmd /c ""C:\Program Files (x86)\Microsoft Visual Studio\Shared\Anaconda3_64\pythonw" labelImg.py"
+@echo off
+setlocal
+set "SCRIPT_DIR=%~dp0"
+cd /d "%SCRIPT_DIR%"
+call "%SCRIPT_DIR%\Launch_LabelImg2.bat" %*
+endlocal

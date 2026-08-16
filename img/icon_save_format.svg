@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+<style type="text/css">
+	.st0{fill:#231F20;}
+</style>
+<g>
+	<!-- Document File Contour -->
+	<path class="st0" d="M120,20H40C34.5,20,30,24.5,30,30v100c0,5.5,4.5,10,10,10h80c5.5,0,10-4.5,10-10V30C130,24.5,125.5,20,120,20z M120,130H40V30h80V130z"/>
+	<!-- Code Format Tag Icon -->
+	<path class="st0" d="M50,55l20,20l-20,20l-6-6l14-14l-14-14Z M110,55l6,6l-14,14l14,14l-6,6l-20-20Z M75,100h25v8H75Z"/>
+</g>
+</svg>

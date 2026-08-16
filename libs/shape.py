@@ -81,7 +81,67 @@ class Shape(object):
         pResx = cosTheta * order.x() + sinTheta * order.y()
         pResy = - sinTheta * order.x() + cosTheta * order.y()
         pRes = QPointF(self.center.x() + pResx, self.center.y() + pResy)
-        return pRes    
+        return pRes
+
+    def scaleBy(self, factor):
+        if not self.center and len(self.points) >= 4:
+            self.close()
+        if self.center:
+            for i, p in enumerate(self.points):
+                vector = p - self.center
+                self.points[i] = self.center + vector * factor
+
+    def increaseLength(self, factor=1.05, delta=3.0):
+        """X 快捷键：增大选中标注框的长 (Length/Height +)"""
+        if not self.center and len(self.points) >= 4:
+            self.close()
+        if len(self.points) >= 4:
+            p0, p1, p2, p3 = self.points[0], self.points[1], self.points[2], self.points[3]
+            top_mid = (p0 + p1) / 2.0
+            bot_mid = (p3 + p2) / 2.0
+            v_len = bot_mid - top_mid
+            len_dist = math.sqrt(v_len.x()**2 + v_len.y()**2)
+            if len_dist > 0.1:
+                u_len = v_len / len_dist
+                step = max(delta, len_dist * (factor - 1.0) / 2.0)
+                self.points[0] = p0 - u_len * step
+                self.points[1] = p1 - u_len * step
+                self.points[2] = p2 + u_len * step
+                self.points[3] = p3 + u_len * step
+                self.close()
+
+    def increaseWidth(self, factor=1.05, delta=3.0):
+        """C 快捷键：增大选中标注框的宽 (Width +)"""
+        if not self.center and len(self.points) >= 4:
+            self.close()
+        if len(self.points) >= 4:
+            p0, p1, p2, p3 = self.points[0], self.points[1], self.points[2], self.points[3]
+            left_mid = (p0 + p3) / 2.0
+            right_mid = (p1 + p2) / 2.0
+            v_wid = right_mid - left_mid
+            wid_dist = math.sqrt(v_wid.x()**2 + v_wid.y()**2)
+            if wid_dist > 0.1:
+                u_wid = v_wid / wid_dist
+                step = max(delta, wid_dist * (factor - 1.0) / 2.0)
+                self.points[0] = p0 - u_wid * step
+                self.points[3] = p3 - u_wid * step
+                self.points[1] = p1 + u_wid * step
+                self.points[2] = p2 + u_wid * step
+                self.close()
+
+    def copy(self):
+        shape = Shape(self.label, self.line_color, self.difficult, self.paintLabel, self.extra_label)
+        shape.points = [QPointF(p.x(), p.y()) for p in self.points]
+        shape.fill = self.fill
+        shape.selected = self.selected
+        shape.direction = self.direction
+        if self.center:
+            shape.center = QPointF(self.center.x(), self.center.y())
+        shape.isRotated = self.isRotated
+        shape.highlightCorner = self.highlightCorner
+        shape.alwaysShowCorner = self.alwaysShowCorner
+        shape._closed = self._closed
+        return shape
 
     def close(self):
         self.center = QPointF((self.points[0].x()+self.points[2].x()) / 2, (self.points[0].y()+self.points[2].y()) / 2)

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+<style type="text/css">
+	.st0{fill:#231F20;}
+</style>
+<g>
+	<!-- Outer Frame -->
+	<path class="st0" d="M140,20H20C14.5,20,10,24.5,10,30v100c0,5.5,4.5,10,10,10h120c5.5,0,10-4.5,10-10V30C150,24.5,145.5,20,140,20z M140,130H20V30h120V130z"/>
+	<!-- Inner Bounding Box Reticle -->
+	<path class="st0" d="M40,50h30v8H48v22h-8V50z M120,50v30h-8V58h-22v-8H120z M40,110V80h8v22h22v8H40z M120,110H90v-8h22V80h8V110z"/>
+	<!-- Center AI Sparkle -->
+	<path class="st0" d="M80,55l5,15l15,5l-15,5l-5,15l-5-15l-15-5l15-5Z"/>
+</g>
+</svg>

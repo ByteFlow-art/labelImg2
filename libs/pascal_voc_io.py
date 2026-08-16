@@ -196,7 +196,18 @@ class PascalVocReader:
             pass
 
     def getShapes(self):
-        return self.shapes
+        # 面积排序：面积大的置于底层，面积小的置于顶层
+        def get_shape_info_area(s):
+            try:
+                points = s[1]
+                if len(points) >= 2:
+                    xs = [p[0] for p in points]
+                    ys = [p[1] for p in points]
+                    return (max(xs) - min(xs)) * (max(ys) - min(ys))
+            except Exception:
+                pass
+            return 0.0
+        return sorted(self.shapes, key=get_shape_info_area, reverse=True)
 
     def getSize(self):
         return self.width, self.height, self.depth
@@ -268,7 +279,8 @@ class PascalVocReader:
             bndbox = object_iter.find("bndbox")
             if bndbox is None:
                 robndbox = object_iter.find('robndbox')
-            label = object_iter.find('name').text
+            name_node = object_iter.find('name')
+            label = name_node.text if (name_node is not None and name_node.text is not None) else 'default'
             # Add chris
             difficult = False
             if object_iter.find('difficult') is not None:
