@@ -1,7 +1,7 @@
 import os
 from typing import Optional
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import (
+from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit, QLabel,
     QGroupBox, QSpinBox, QDoubleSpinBox, QComboBox, QFileDialog,
     QProgressBar, QTextEdit, QMessageBox, QGridLayout

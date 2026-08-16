@@ -1,11 +1,11 @@
 import math
 from typing import List, Dict, Any, Optional
-from PyQt6.QtCore import Qt, pyqtSignal, QRectF, QPointF
-from PyQt6.QtGui import (
+from PyQt5.QtCore import Qt, pyqtSignal, QRectF, QPointF
+from PyQt5.QtGui import (
     QPixmap, QPen, QColor, QBrush, QFont, QPainter, 
     QWheelEvent, QMouseEvent, QKeyEvent, QCursor
 )
-from PyQt6.QtWidgets import (
+from PyQt5.QtWidgets import (
     QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, 
     QGraphicsRectItem, QGraphicsTextItem, QGraphicsItem
 )

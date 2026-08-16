@@ -1,8 +1,8 @@
 import os
 from typing import Optional, List, Dict, Any
-from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QAction, QKeySequence, QIcon
-from PyQt6.QtWidgets import (
+from PyQt5.QtCore import Qt, QSize
+from PyQt5.QtGui import QAction, QKeySequence, QIcon
+from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QSplitter, QStatusBar,
     QToolBar, QMessageBox, QLabel
 )

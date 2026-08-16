@@ -1,8 +1,8 @@
 import os
 from typing import Dict, List, Any, Optional
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import (
+from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtGui import QColor
+from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QSlider, QLabel,
     QGroupBox, QTableWidget, QTableWidgetItem, QCheckBox, QProgressBar,
     QFileDialog, QRadioButton, QSpinBox, QDoubleSpinBox, QHeaderView, QColorDialog
