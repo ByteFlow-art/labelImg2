@@ -89,7 +89,7 @@
 ### 🔹 模式一：直接下载独立绿色版 (.exe) 【推荐普通用户】
 无需安装 Python，无需配置任何代码环境，开箱即用：
 1. 前往本项目的 **[GitHub Releases 下载页面](https://github.com/ByteFlow-art/labelImg2/releases)**；
-2. 下载最新版本的压缩包（如 `LabelImg2-v2.0-Windows-x64.zip`）；
+2. 下载最新版本的压缩包（如 `LabelImg2-v1.0.0-Windows-x64.zip`）；
 3. 解压到任意目录（路径中建议避免中文与特殊字符）；
 4. 双击目录中的 `LabelImg2.exe` 即可直接进入标注工作台！
 

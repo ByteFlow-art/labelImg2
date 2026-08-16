@@ -97,7 +97,7 @@ def build():
     result = subprocess.run(cmd, cwd=ROOT_DIR)
     if result.returncode == 0:
         dist_dir = os.path.join(ROOT_DIR, "dist", "LabelImg2")
-        zip_output = os.path.join(ROOT_DIR, "dist", "LabelImg2-v2.0-Windows-x64.zip")
+        zip_output = os.path.join(ROOT_DIR, "dist", "LabelImg2-v1.0.0-Windows-x64.zip")
         print("\n=======================================================")
         print(f"[成功] LabelImg2 独立应用已成功构建！")
         print(f"输出目录: {dist_dir}")
@@ -109,6 +109,7 @@ def build():
         except Exception as e:
             print(f"[提示] ZIP 压缩跳过: {e}")
         print("=======================================================\n")
+
     else:
         print(f"\n[错误] 构建失败，退出码: {result.returncode}")
 
