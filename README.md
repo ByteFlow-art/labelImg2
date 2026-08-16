@@ -13,9 +13,18 @@
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-[**📥 下载独立绿色版 (.exe)**](#-模式一直接下载独立绿色版-exe-推荐) • [**⚡ 一键环境自动搭建**](#-模式二下载源码包--一键自动化启动-推荐开发者) • [**📖 功能对标与对比**](#-对标-chinakooklabelimg2-核心特性升级对比) • [**⌨️ 快捷键速查**](#-快捷键速查表-hotkeys-cheat-sheet)
+[**📥 立即下载独立绿色版 (.exe)**](https://github.com/ByteFlow-art/labelImg2/releases) • [**⚡ 一键环境自动搭建**](#-模式二下载源码包--一键自动化启动-推荐开发者) • [**📖 功能对标与对比**](#-对标-chinakooklabelimg2-核心特性升级对比) • [**⌨️ 快捷键速查**](#-快捷键速查表-hotkeys-cheat-sheet)
 
 </div>
+
+---
+
+## 📥 软件下载专区 (Quick Download)
+
+| 版本类型 | 操作系统 | 下载链接 | 说明 |
+| :--- | :--- | :--- | :--- |
+| 🚀 **LabelImg2 绿色免安装版 (.zip)** | Windows 10 / 11 (x64) | [**⬇️ GitHub Releases 下载**](https://github.com/ByteFlow-art/labelImg2/releases) | **推荐普通用户**，解压后双击 `LabelImg2.exe` 直接运行，内置所有核心依赖与预训练模型 |
+| 📦 **LabelImg2 源码完整包 (Source Code)** | Windows / Linux / macOS | [**⬇️ 下载 Source Code (.zip)**](https://github.com/ByteFlow-art/labelImg2/archive/refs/heads/master.zip) | **推荐开发者**，解压后双击 `Start_LabelImg2.bat` 自动配置环境并秒启 |
 
 ---
 
@@ -79,9 +88,10 @@
 
 ### 🔹 模式一：直接下载独立绿色版 (.exe) 【推荐普通用户】
 无需安装 Python，无需配置任何代码环境，开箱即用：
-1. 前往本项目的 **[GitHub Releases 页面](../../releases)** 下载最新的 `LabelImg2-v2.0-Windows-x64.zip`；
-2. 解压到任意目录（路径中建议避免中文与特殊字符）；
-3. 双击 `LabelImg2.exe` 即可直接进入标注工作台！
+1. 前往本项目的 **[GitHub Releases 下载页面](https://github.com/ByteFlow-art/labelImg2/releases)**；
+2. 下载最新版本的压缩包（如 `LabelImg2-v2.0-Windows-x64.zip`）；
+3. 解压到任意目录（路径中建议避免中文与特殊字符）；
+4. 双击目录中的 `LabelImg2.exe` 即可直接进入标注工作台！
 
 ---
 
@@ -90,14 +100,15 @@
 
 1. **克隆或下载本仓库**：
    ```bash
-   git clone https://github.com/chinakook/labelImg2.git
+   git clone https://github.com/ByteFlow-art/labelImg2.git
    cd labelImg2
    ```
 2. **双击启动脚本**：
-   - **直接双击 `Launch_LabelImg2.bat`**：
+   - **直接双击 `Start_LabelImg2.bat`**：
      - 若已存在 Conda 或虚拟环境，将直接秒启程序；
      - 若首次运行未检测到依赖，将自动调用 `setup_env.bat` 一键自动配置好 PyQt5、PyTorch、Ultralytics 等全套依赖库！
    - 也可直接双击运行 **`setup_env.bat`** 手动进入初始化向导。
+
 
 ---
 
