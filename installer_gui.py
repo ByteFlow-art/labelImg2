@@ -17,8 +17,20 @@ import subprocess
 import threading
 import time
 
-from PyQt5.QtCore import Qt, pyqtSignal, QThread, QSize
+# Ensure Qt can find platform plugins in PyInstaller bundle
+if hasattr(sys, '_MEIPASS'):
+    plugin_path = os.path.join(sys._MEIPASS, 'PyQt5', 'Qt5', 'plugins')
+    if os.path.exists(plugin_path):
+        os.environ['QT_QPA_PLATFORM_PLUGIN_PATH'] = os.path.join(plugin_path, 'platforms')
+
+from PyQt5.QtCore import Qt, pyqtSignal, QThread, QSize, QCoreApplication
+if hasattr(sys, '_MEIPASS'):
+    plugin_path = os.path.join(sys._MEIPASS, 'PyQt5', 'Qt5', 'plugins')
+    if os.path.exists(plugin_path):
+        QCoreApplication.addLibraryPath(plugin_path)
+
 from PyQt5.QtGui import QIcon, QPixmap, QFont, QColor
+
 from PyQt5.QtWidgets import (
     QApplication, QWizard, QWizardPage, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QProgressBar, QTextEdit,
