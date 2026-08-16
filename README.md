@@ -23,13 +23,10 @@
 
 | 版本类型 | 操作系统 | 下载链接 | 说明 |
 | :--- | :--- | :--- | :--- |
-| ⚡ **LabelImg2 官方安装包 (.zip 推荐)** | Windows 10 / 11 (x64) | [**⬇️ GitHub Releases 下载 (Setup.zip)**](https://github.com/ByteFlow-art/labelImg2/releases) | **🌟 强烈推荐（主流防拦截模式）**：下载 `LabelImg2_Setup_v1.0.0.zip`（仅 ~48MB），无浏览器拦截警告，解压即可运行安装程序并在桌面生成 App 图标 |
-| 🚀 **LabelImg2 独立安装程序 (.exe)** | Windows 10 / 11 (x64) | [**⬇️ GitHub Releases 下载 (Setup.exe)**](https://github.com/ByteFlow-art/labelImg2/releases) | 单文件安装包（若浏览器提示安全拦截，点击「保留 -> 仍要保留」即可继续运行） |
-| 📦 **LabelImg2 源码完整包 (Source Code)** | Windows / Linux / macOS | [**⬇️ 下载 Source Code (.zip)**](https://github.com/ByteFlow-art/labelImg2/archive/refs/heads/master.zip) | **推荐开发者**，解压后双击 `Start_LabelImg2.bat` 自动配置环境并秒启 |
+| ⚡ **LabelImg2 官方安装程序 (.exe)** | Windows 10 / 11 (x64) | [**⬇️ GitHub Releases 下载 (Setup)**](https://github.com/ByteFlow-art/labelImg2/releases) | **🌟 普通用户首选**：下载独立安装程序，运行图形化安装向导，全自动搭建环境并在电脑桌面生成专属 App 图标 |
+| 📦 **LabelImg2 源码完整包 (Source Code)** | Windows / Linux / macOS | [**⬇️ 下载 Source Code (.zip)**](https://github.com/ByteFlow-art/labelImg2/archive/refs/heads/master.zip) | **🌟 开发者与便携用户首选**：下载源码解压后，直接双击 `Start_LabelImg2.bat` 或 `LabelImg2.lnk` 即可秒启 |
 
 ---
-
-
 
 ## 📖 项目简介与背景 (Introduction)
 
@@ -51,7 +48,7 @@
 | **重叠目标层级渲染** | ⚠️ 多个重合框无法精确选取底层/顶层 | ✅ **面积自适应层级排序**：大框自动置底、小框置顶，点击响应与命中判定精准分层 |
 | **零目标/空图片处理** | ⚠️ 容易丢失空标签或抛出异常 | ✅ **0 标注自动保存**：自动生成标准化 0-object 空 XML 标签并创建对应文件夹，完美适配负样本训练 |
 | **快捷操作与防错机制** | ⚠️ 易误触丢失修改，回退机制单一 | ✅ **全方位数据防丢失保护**（切换/退出智能三态弹窗）；**R 键单键循环回退/重做 (Undo/Redo)**；**Q / Delete 统一秒删** |
-| **软件安装与环境部署** | ⚠️ 依赖本地 Python 与命令行手动配置 | ✅ **双模极速体验**：提供**绿色免安装独立 `.exe`** + **零门槛裸机全自动环境配置脚本 (`setup_env.bat`)** |
+| **软件安装与启动** | ⚠️ 依赖本地 Python 与命令行手动配置 | ✅ **双模极速体验**：支持**独立安装程序 (.exe)** 与 **源码一键启动脚本 (`Start_LabelImg2.bat`)** |
 | **UI 交互美学** | 传统经典风格 | ✅ **现代化 Workstation 轻量工作台**，高对比度设计，去除冗余杂乱提示，任务栏独立 App 图标 |
 
 ---
@@ -87,32 +84,25 @@
 
 ---
 
-## 🛠️ 安装、启动与卸载指南 (Installation, Run & Clean)
+## 🛠️ 两种使用方式指引 (How to Use)
 
-### 🔹 模式一：官方图形化安装包 (.zip 推荐) 【🌟 零拦截最简模式】
-1. 前往本项目的 **[GitHub Releases 下载页面](https://github.com/ByteFlow-art/labelImg2/releases)**；
-2. 下载 `LabelImg2_Setup_v1.0.0.zip` 并解压；
-3. 双击里面的 **`一键安装LabelImg2.bat`** 或 **`LabelImg2_Setup_v1.0.0.exe`**；
-4. 进入图形化安装向导，自动配置全部 AI 依赖并在桌面上生成专属 App 图标！
-
----
-
-### 🔹 模式二：下载源码包 + .exe 免命令行启动 【推荐开发者/便携用户】
-源码包内已内置 **全套专属 App 图标工具**：
-1. 下载源码压缩包并解压；
-2. **首次使用**：双击 **`setup_env.bat`** 或 **`Start_LabelImg2.bat`** 自动初始化环境；
-3. **日常启动**：直接双击根目录下的 **`LabelImg2.exe`**（带专属 App 图标，无黑框静默启动）；
-4. **生成桌面图标**：双击 **`Create_Desktop_Shortcut.bat`** 即可在桌面生成高清图标快捷方式。
+### 🔹 途径一：下载独立安装程序 (.exe) 【推荐普通用户】
+1. 前往本项目的 **[GitHub Releases 页面](https://github.com/ByteFlow-art/labelImg2/releases)**；
+2. 下载最新的安装程序包（`LabelImg2_Setup_v1.0.0.zip` 或 `LabelImg2_Setup_v1.0.0.exe`）；
+3. 运行进入图形化安装向导，按提示完成安装；
+4. 安装完成后，直接双击电脑桌面上生成的 **`LabelImg2`** 专属 App 图标即可启动使用！
 
 ---
 
-### 🗑️ 一键彻底卸载与环境清理 (Uninstaller)
-当您需要完全清理软件或重置运行环境时：
-- **GUI 卸载**：双击目录下的 **`Uninstall.exe`**（带专属 App 图标），点击一键清理；
-- **脚本卸载**：双击 **`一键彻底卸载LabelImg2.bat`**；
-- 将自动为您**删除桌面快捷方式、清理本地 Python 虚拟环境 (`.venv`/`python_embed`)、模型缓存与所有临时文件**，实现 0 残留清理。
+### 🔹 途径二：下载源码包使用 (.bat 启动) 【推荐开发者】
+本仓库已对源码包进行了极简化配置，无需每次敲写命令行：
+1. 点击 **[⬇️ 下载 Source Code (.zip)]** 并解压到本地；
+2. **首次使用**：直接双击根目录下的 **`Start_LabelImg2.bat`**（或带 App 图标的 **`LabelImg2.lnk`**），脚本将全自动检测并配置好 Python 与深度学习依赖环境；
+3. **日常启动**：直接双击 **`Start_LabelImg2.bat`** 或 **`LabelImg2.lnk`** 秒级进入工作台；
+4. **生成桌面图标**：双击 **`Create_Desktop_Shortcut.bat`** 即可一键在桌面生成专属 App 高清图标。
 
 ---
+
 
 
 ### 🔹 模式三：手动命令行安装 (Manual Installation)
