@@ -146,10 +146,26 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM 自动创建桌面快捷方式（使用专属 App 图标）
+set "ICON_FILE=%SCRIPT_DIR%img\labelImg2.ico"
+set "TARGET_FILE=%SCRIPT_DIR%Start_LabelImg2.bat"
+if exist "%SCRIPT_DIR%dist\LabelImg2\LabelImg2.exe" set "TARGET_FILE=%SCRIPT_DIR%dist\LabelImg2\LabelImg2.exe"
+
+powershell -NoProfile -Command ^
+    "$WshShell = New-Object -ComObject WScript.Shell; " ^
+    "$Desktop = [Environment]::GetFolderPath('Desktop'); " ^
+    "$Shortcut = $WshShell.CreateShortcut($Desktop + '\LabelImg2.lnk'); " ^
+    "$Shortcut.TargetPath = '%TARGET_FILE%'; " ^
+    "$Shortcut.WorkingDirectory = '%SCRIPT_DIR%'; " ^
+    "$Shortcut.IconLocation = '%ICON_FILE%,0'; " ^
+    "$Shortcut.Description = 'LabelImg2 Next-Gen - AI 智能计算机视觉标注工作台'; " ^
+    "$Shortcut.Save();" >nul 2>&1
+
 echo.
 echo ==============================================================================
 echo   [成功] LabelImg2 环境部署已全部完成！
-echo   现在您可以直接双击 [Launch_LabelImg2.bat] 启动标注工作台。
+echo   已在您的桌面上生成了带有专属 App 图标的 [LabelImg2] 快捷方式。
+echo   现在您可以直接双击桌面图标或 [Start_LabelImg2.bat] 启动标注工作台。
 echo ==============================================================================
 echo.
 
@@ -157,8 +173,9 @@ REM 询问是否立即启动
 set /p LAUNCH_NOW="是否立即启动 LabelImg2？(Y/N，默认 Y): "
 if /i "%LAUNCH_NOW%"=="" set "LAUNCH_NOW=Y"
 if /i "%LAUNCH_NOW%"=="Y" (
-    start "" "%SCRIPT_DIR%\Launch_LabelImg2.bat"
+    start "" "%SCRIPT_DIR%\Start_LabelImg2.bat"
 )
 
 endlocal
 exit /b 0
+
