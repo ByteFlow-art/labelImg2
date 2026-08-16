@@ -1454,12 +1454,15 @@ class MainWindow(QMainWindow, WindowMixin):
                 self.toggle_undo_redo()
                 return True
         elif event.type() == QEvent.KeyRelease:
+            if event.isAutoRepeat():
+                return super(MainWindow, self).eventFilter(obj, event)
             key = event.key()
             txt = event.text().lower() if event.text() else ""
             if key in (Qt.Key_Z, Qt.Key_V) or txt in ('z', 'v'):
                 if hasattr(self, 'canvas') and self.canvas:
                     self.canvas._rot_start_time = None
                     self.canvas._rot_last_time = 0
+
         return super(MainWindow, self).eventFilter(obj, event)
 
     def keyPressEvent(self, event):

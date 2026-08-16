@@ -1155,11 +1155,14 @@ class Canvas(QWidget):
 
 
     def keyReleaseEvent(self, ev):
+        if ev.isAutoRepeat():
+            return
         key = ev.key()
         txt = ev.text().lower() if ev.text() else ""
         if key in (Qt.Key_Z, Qt.Key_V) or txt in ('z', 'v'):
             self._rot_start_time = None
             self._rot_last_time = 0
+
 
     def rotateOutOfBound(self, angle):
         if self.canOutOfBounding:
