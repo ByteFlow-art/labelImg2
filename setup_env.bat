@@ -16,8 +16,13 @@ echo.
 set "SCRIPT_DIR=%~dp0"
 cd /d "%SCRIPT_DIR%"
 
+set "IS_AUTO_MODE=0"
+if /i "%~1"=="--auto" set "IS_AUTO_MODE=1"
+if /i "%~1"=="-y" set "IS_AUTO_MODE=1"
+
 set "PYTHON_EXE="
-set "PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple"
+set "PIP_INDEX_URL=http://mirrors.aliyun.com/pypi/simple/"
+set "TRUSTED_HOST_ARG=--trusted-host mirrors.aliyun.com --trusted-host pypi.tuna.tsinghua.edu.cn"
 
 echo [步骤 1/5] 正在检测系统 Python / Conda 运行环境...
 
@@ -88,23 +93,27 @@ REM 4. 若未检测到任何 Python，提供一键便携式 Python 下载安装�
 echo.
 echo [警告] 未在当前系统中检测到 Python 3.8+ 或 Conda 环境！
 echo.
-echo 请选择安装方式：
-echo   [1] 自动下载并解压便携式 Python 3.10 运行环境 (推荐，纯绿色无污染)
-echo   [2] 退出并自行安装 Python (https://www.python.org/downloads/)
-echo.
-set /p USER_CHOICE="请输入选项 [1 或 2，默认 1]: "
-if "%USER_CHOICE%"=="" set "USER_CHOICE=1"
+
+set "USER_CHOICE=1"
+if "%IS_AUTO_MODE%"=="0" (
+    echo 请选择安装方式：
+    echo   [1] 自动下载并解压便携式 Python 3.10 运行环境 (推荐，纯绿色无污染)
+    echo   [2] 退出并自行安装 Python (https://www.python.org/downloads/)
+    echo.
+    set /p USER_CHOICE="请输入选项 [1 或 2，默认 1]: "
+    if "!USER_CHOICE!"=="" set "USER_CHOICE=1"
+)
 
 if "%USER_CHOICE%"=="1" (
     echo [*] 正在下载便携式 Python 运行环境，请稍候...
-    powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object System.Net.WebClient).DownloadFile('https://npmmirror.com/mirrors/python/3.10.11/python-3.10.11-embed-amd64.zip', 'python_embed.zip')"
+    powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object System.Net.WebClient).DownloadFile('https://npmmirror.com/mirrors/python/3.10.11/python-3.10.11-embed-amd64.zip', 'python_embed.zip')"
     if exist "python_embed.zip" (
-        powershell -Command "Expand-Archive -Path 'python_embed.zip' -DestinationPath 'python_embed' -Force"
-        del python_embed.zip
+        powershell -NoProfile -Command "Expand-Archive -Path 'python_embed.zip' -DestinationPath 'python_embed' -Force"
+        del /f /q python_embed.zip >nul 2>&1
         echo import site >> python_embed\python310._pth
         echo [*] 正在下载 pip 引导工具...
-        powershell -Command "(New-Object System.Net.WebClient).DownloadFile('https://bootstrap.pypa.io/get-pip.py', 'python_embed\get-pip.py')"
-        python_embed\python.exe python_embed\get-pip.py --no-warn-script-location -i !PIP_INDEX_URL!
+        powershell -NoProfile -Command "(New-Object System.Net.WebClient).DownloadFile('https://bootstrap.pypa.io/get-pip.py', 'python_embed\get-pip.py')"
+        python_embed\python.exe python_embed\get-pip.py --no-warn-script-location -i !PIP_INDEX_URL! !TRUSTED_HOST_ARG!
         if exist "python_embed\Scripts\pip.exe" (
             set "PYTHON_EXE=%SCRIPT_DIR%\python_embed\python.exe"
             echo [OK] 便携式 Python 环境部署成功！
@@ -116,23 +125,23 @@ if "%USER_CHOICE%"=="1" (
 
 echo.
 echo [提示] 请安装 Python 3.8 ~ 3.11 并将其勾选加入环境变量 PATH，然后重新运行本脚本。
-pause
+if "%IS_AUTO_MODE%"=="0" pause
 exit /b 1
 
 :INSTALL_DEPS
 echo.
 echo [步骤 3/5] 正在升级 pip 并配置国内极速镜像源...
-"!PYTHON_EXE!" -m pip install --upgrade pip -i !PIP_INDEX_URL! >nul 2>&1
+"!PYTHON_EXE!" -m pip install --upgrade pip -i !PIP_INDEX_URL! !TRUSTED_HOST_ARG! >nul 2>&1
 
 echo.
 echo [步骤 4/5] 正在安装核心依赖包 (PyQt5, Ultralytics, PyTorch, OpenCV, lxml 等)...
-echo [*] 使用清华大学镜像源高速安装中，请稍候...
-"!PYTHON_EXE!" -m pip install -r requirements.txt -i !PIP_INDEX_URL!
+echo [*] 使用高速镜像源安装中，请稍候...
+"!PYTHON_EXE!" -m pip install -r requirements.txt -i !PIP_INDEX_URL! !TRUSTED_HOST_ARG!
 
 if errorlevel 1 (
     echo.
-    echo [重试] 尝试备用镜像源安装...
-    "!PYTHON_EXE!" -m pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/
+    echo [重试] 尝试备用清华源安装...
+    "!PYTHON_EXE!" -m pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn
 )
 
 echo.
@@ -142,7 +151,7 @@ echo [步骤 5/5] 正在验证 LabelImg2 运行环境完整性...
 if errorlevel 1 (
     echo.
     echo [警告] 部分依赖加载异常，请检查上述错误信息。
-    pause
+    if "%IS_AUTO_MODE%"=="0" pause
     exit /b 1
 )
 
@@ -169,6 +178,8 @@ echo   现在您可以直接双击桌面图标或 [Start_LabelImg2.bat] 启动�
 echo ==============================================================================
 echo.
 
+if "%IS_AUTO_MODE%"=="1" exit /b 0
+
 REM 询问是否立即启动
 set /p LAUNCH_NOW="是否立即启动 LabelImg2？(Y/N，默认 Y): "
 if /i "%LAUNCH_NOW%"=="" set "LAUNCH_NOW=Y"
@@ -178,4 +189,5 @@ if /i "%LAUNCH_NOW%"=="Y" (
 
 endlocal
 exit /b 0
+
 

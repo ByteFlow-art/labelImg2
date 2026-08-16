@@ -161,7 +161,7 @@ class InstallWorker(QThread):
             if os.path.exists(setup_script):
                 self.log_received.emit("[*] 正在执行全自动环境初始化与依赖安装...")
                 p = subprocess.Popen(
-                    ["cmd.exe", "/c", setup_script],
+                    ["cmd.exe", "/c", setup_script, "--auto"],
                     cwd=self.target_dir,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
