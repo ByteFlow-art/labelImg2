@@ -81,11 +81,17 @@ def build_installer():
 
     if result.returncode == 0:
         exe_path = os.path.join(ROOT_DIR, "dist", f"{out_name}.exe")
+        zip_path = os.path.join(ROOT_DIR, "dist", f"{out_name}.zip")
         print("\n=======================================================")
         print(f"[成功] LabelImg2 独立安装程序已成功生成！")
         print(f"安装包路径: {exe_path}")
         print(f"安装包大小: {os.path.getsize(exe_path) / (1024*1024):.2f} MB")
-        print("该单个 .exe 文件可直接上传至 GitHub Releases 供全球用户一键下载安装！")
+        
+        print("正在自动生成防浏览器拦截的发布压缩包 (ZIP)...")
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            zf.write(exe_path, f"{out_name}.exe")
+        print(f"[成功] 防拦截安装压缩包已生成: {zip_path}")
+        print(f"压缩包大小: {os.path.getsize(zip_path) / (1024*1024):.2f} MB")
         print("=======================================================\n")
 
     else:

@@ -23,10 +23,12 @@
 
 | 版本类型 | 操作系统 | 下载链接 | 说明 |
 | :--- | :--- | :--- | :--- |
-| ⚡ **LabelImg2 官方安装程序 (.exe)** | Windows 10 / 11 (x64) | [**⬇️ GitHub Releases 下载 (Setup.exe)**](https://github.com/ByteFlow-art/labelImg2/releases) | **🌟 强烈推荐（主流应用模式）**：下载单个 `LabelImg2_Setup_v1.0.0.exe`（仅 ~50MB），运行进入图形化安装向导，全自动搭建环境并在桌面生成 App 图标 |
+| ⚡ **LabelImg2 官方安装包 (.zip 推荐)** | Windows 10 / 11 (x64) | [**⬇️ GitHub Releases 下载 (Setup.zip)**](https://github.com/ByteFlow-art/labelImg2/releases) | **🌟 强烈推荐（主流防拦截模式）**：下载 `LabelImg2_Setup_v1.0.0.zip`（仅 ~48MB），无浏览器拦截警告，解压即可运行安装程序并在桌面生成 App 图标 |
+| 🚀 **LabelImg2 独立安装程序 (.exe)** | Windows 10 / 11 (x64) | [**⬇️ GitHub Releases 下载 (Setup.exe)**](https://github.com/ByteFlow-art/labelImg2/releases) | 单文件安装包（若浏览器提示安全拦截，点击「保留 -> 仍要保留」即可继续运行） |
 | 📦 **LabelImg2 源码完整包 (Source Code)** | Windows / Linux / macOS | [**⬇️ 下载 Source Code (.zip)**](https://github.com/ByteFlow-art/labelImg2/archive/refs/heads/master.zip) | **推荐开发者**，解压后双击 `Start_LabelImg2.bat` 自动配置环境并秒启 |
 
 ---
+
 
 
 ## 📖 项目简介与背景 (Introduction)
