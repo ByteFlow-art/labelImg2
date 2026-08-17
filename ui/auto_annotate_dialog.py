@@ -233,8 +233,8 @@ class AutoAnnotateDialog(QDialog):
         lbl_mode.setStyleSheet("font-size: 13px; font-weight: bold;")
         mode_box.addWidget(lbl_mode)
 
-        self.rb_mode_overwrite = QRadioButton("完全覆盖替换 (清空原图已有标签，以模型检测结果替换)")
-        self.rb_mode_append = QRadioButton("追加合并模式 (保留原图已有标注，在此基础上追加新目标)")
+        self.rb_mode_overwrite = QRadioButton("完全覆盖模式")
+        self.rb_mode_append = QRadioButton("追加合并模式")
         self.rb_mode_overwrite.setChecked(True)
         self.rb_mode_overwrite.setStyleSheet("font-size: 13px; font-weight: bold; color: #1E293B;")
         self.rb_mode_append.setStyleSheet("font-size: 13px; font-weight: bold; color: #2563EB;")
@@ -247,6 +247,7 @@ class AutoAnnotateDialog(QDialog):
         mode_box.addWidget(self.rb_mode_append)
         mode_box.addStretch()
         layout.addLayout(mode_box)
+
 
         # 5. 自动批注保存文件格式类型选项
         layout.addWidget(self.create_section_header("5. 标注保存文件格式类型设置"))
