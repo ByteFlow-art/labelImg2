@@ -225,8 +225,31 @@ class AutoAnnotateDialog(QDialog):
 
 
 
-        # 4. 自动批注保存文件格式类型选项
-        layout.addWidget(self.create_section_header("4. 标注保存文件格式类型设置"))
+        # 4. 自动标注应用模式设置 (覆盖原标签 vs 追加合并)
+        layout.addWidget(self.create_section_header("4. 自动标注应用模式设置"))
+        mode_box = QHBoxLayout()
+        lbl_mode = QLabel("标注应用模式:")
+        lbl_mode.setMinimumWidth(130)
+        lbl_mode.setStyleSheet("font-size: 13px; font-weight: bold;")
+        mode_box.addWidget(lbl_mode)
+
+        self.rb_mode_overwrite = QRadioButton("完全覆盖替换 (清空原图已有标签，以模型检测结果替换)")
+        self.rb_mode_append = QRadioButton("追加合并模式 (保留原图已有标注，在此基础上追加新目标)")
+        self.rb_mode_overwrite.setChecked(True)
+        self.rb_mode_overwrite.setStyleSheet("font-size: 13px; font-weight: bold; color: #1E293B;")
+        self.rb_mode_append.setStyleSheet("font-size: 13px; font-weight: bold; color: #2563EB;")
+
+        self.mode_group = QButtonGroup(self)
+        self.mode_group.addButton(self.rb_mode_overwrite, 1)
+        self.mode_group.addButton(self.rb_mode_append, 2)
+
+        mode_box.addWidget(self.rb_mode_overwrite)
+        mode_box.addWidget(self.rb_mode_append)
+        mode_box.addStretch()
+        layout.addLayout(mode_box)
+
+        # 5. 自动批注保存文件格式类型选项
+        layout.addWidget(self.create_section_header("5. 标注保存文件格式类型设置"))
         fmt_box = QHBoxLayout()
         lbl_fmt = QLabel("保存格式类型:")
         lbl_fmt.setMinimumWidth(130)
@@ -244,6 +267,7 @@ class AutoAnnotateDialog(QDialog):
         self.combo_save_format.currentIndexChanged.connect(self.on_save_format_changed)
         fmt_box.addWidget(self.combo_save_format, stretch=1)
         layout.addLayout(fmt_box)
+
 
         # 6. 进度条与控制台状态
         self.progress_bar = QProgressBar()
@@ -612,11 +636,14 @@ class AutoAnnotateDialog(QDialog):
         stem = os.path.splitext(os.path.basename(img_path))[0]
         xml_path = os.path.join(save_dir, f"{stem}.xml")
 
-        if os.path.exists(xml_path):
+        is_append = getattr(self, 'rb_mode_append', None) and self.rb_mode_append.isChecked()
+        overwrite_mode = not is_append
+
+        if overwrite_mode and os.path.exists(xml_path):
             reply = QMessageBox.question(
                 self,
                 "覆盖标注确认",
-                f"检测到标注文件 [{stem}.xml] 已存在！\n是否确定覆盖已有标注内容？",
+                f"检测到标注文件 [{stem}.xml] 已存在！\n当前为【完全覆盖替换模式】，是否确定覆盖已有标注内容？\n\n(提示：若想保留原图已有标注，请在模型中心切换为【追加合并模式】)",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No if hasattr(QMessageBox, 'StandardButton') else QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.StandardButton.No if hasattr(QMessageBox, 'StandardButton') else QMessageBox.No
             )
@@ -641,7 +668,7 @@ class AutoAnnotateDialog(QDialog):
                 objects=boxes,
                 output_xml_path=xml_path,
                 class_mapping=mapping,
-                overwrite=True
+                overwrite=overwrite_mode
             )
 
             if hasattr(self.main_window, 'defaultSaveDir'):
@@ -649,7 +676,8 @@ class AutoAnnotateDialog(QDialog):
             if hasattr(self.main_window, 'loadFile'):
                 self.main_window.loadFile(img_path)
 
-            status_msg = f"单图自动批注完成: 检测到 {len(boxes)} 个目标 -> {os.path.basename(xml_path)}"
+            mode_str = "追加模式 (保留原标注)" if is_append else "覆盖模式"
+            status_msg = f"单图自动批注完成 [{mode_str}]: 检测到 {len(boxes)} 个目标 -> {os.path.basename(xml_path)}"
             self.lbl_status.setText(status_msg)
             safe_print(f"[Auto-Annotate Terminal] {status_msg}")
 
@@ -671,19 +699,23 @@ class AutoAnnotateDialog(QDialog):
         save_dir = self.cur_xml_dir or os.path.dirname(image_paths[0])
         os.makedirs(save_dir, exist_ok=True)
 
-        existing_count = sum(1 for p in image_paths if os.path.exists(os.path.join(save_dir, f"{os.path.splitext(os.path.basename(p))[0]}.xml")))
-        if existing_count > 0:
-            reply = QMessageBox.question(
-                self,
-                "批量覆盖确认",
-                f"在保存目录中检测到 {existing_count} 个已存在的标注文件！\n是否确定覆盖现有标注？",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No if hasattr(QMessageBox, 'StandardButton') else QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.StandardButton.No if hasattr(QMessageBox, 'StandardButton') else QMessageBox.No
-            )
-            yes_val = QMessageBox.StandardButton.Yes if hasattr(QMessageBox, 'StandardButton') else QMessageBox.Yes
-            if reply != yes_val:
-                self.lbl_status.setText("已取消批量自动批注")
-                return
+        is_append = getattr(self, 'rb_mode_append', None) and self.rb_mode_append.isChecked()
+        overwrite_mode = not is_append
+
+        if overwrite_mode:
+            existing_count = sum(1 for p in image_paths if os.path.exists(os.path.join(save_dir, f"{os.path.splitext(os.path.basename(p))[0]}.xml")))
+            if existing_count > 0:
+                reply = QMessageBox.question(
+                    self,
+                    "批量覆盖确认",
+                    f"在保存目录中检测到 {existing_count} 个已存在的标注文件！\n当前为【完全覆盖替换模式】，是否确定覆盖现有标注？\n\n(提示：若想保留已有标注并在其上新增目标，请切换为【追加合并模式】)",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No if hasattr(QMessageBox, 'StandardButton') else QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.StandardButton.No if hasattr(QMessageBox, 'StandardButton') else QMessageBox.No
+                )
+                yes_val = QMessageBox.StandardButton.Yes if hasattr(QMessageBox, 'StandardButton') else QMessageBox.Yes
+                if reply != yes_val:
+                    self.lbl_status.setText("已取消批量自动批注")
+                    return
 
         if hasattr(self.main_window, 'defaultSaveDir'):
             self.main_window.defaultSaveDir = save_dir
@@ -700,9 +732,10 @@ class AutoAnnotateDialog(QDialog):
             class_mapping=mapping,
             save_xml=True,
             save_yolo_txt=False,
-            overwrite=True,
+            overwrite=overwrite_mode,
             custom_output_dir=save_dir
         )
+
 
         self.batch_thread.progress_signal.connect(self.on_batch_progress)
         self.batch_thread.finished_signal.connect(self.on_batch_finished)

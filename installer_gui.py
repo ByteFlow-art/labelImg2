@@ -124,13 +124,16 @@ def get_bundle_dir():
     return os.path.abspath(os.path.dirname(__file__))
 
 def get_app_icon():
-    ico_path = os.path.join(get_bundle_dir(), "img", "labelImg2.ico")
-    if os.path.exists(ico_path):
-        return QIcon(ico_path)
-    png_path = os.path.join(get_bundle_dir(), "img", "labelImg2.png")
-    if os.path.exists(png_path):
-        return QIcon(png_path)
+    for ico_name in ["labelImg2.ico", "app.ico"]:
+        ico_path = os.path.join(get_bundle_dir(), "img", ico_name)
+        if os.path.exists(ico_path):
+            return QIcon(ico_path)
+    for png_name in ["app.png", "labelImg2.png"]:
+        png_path = os.path.join(get_bundle_dir(), "img", png_name)
+        if os.path.exists(png_path):
+            return QIcon(png_path)
     return QIcon()
+
 
 
 class InstallWorker(QThread):
@@ -228,11 +231,14 @@ class WelcomePage(QWizardPage):
         # 顶部 Logo 徽标
         logo_layout = QHBoxLayout()
         logo_lbl = QLabel()
-        png_path = os.path.join(get_bundle_dir(), "img", "labelImg2.png")
+        png_path = os.path.join(get_bundle_dir(), "img", "app.png")
+        if not os.path.exists(png_path):
+            png_path = os.path.join(get_bundle_dir(), "img", "labelImg2.png")
         if os.path.exists(png_path):
             pix = QPixmap(png_path).scaled(80, 80, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             logo_lbl.setPixmap(pix)
         logo_layout.addWidget(logo_lbl)
+
 
         title_box = QVBoxLayout()
         lbl_title = QLabel("LabelImg2 Next-Gen v1.0.0")
@@ -418,14 +424,25 @@ class InstallerWizard(QWizard):
 
 
 def main():
-    app = QApplication(sys.argv)
-    app.setApplicationName("LabelImg2 Setup")
-    app.setWindowIcon(get_app_icon())
+    try:
+        if hasattr(Qt, 'AA_EnableHighDpiScaling'):
+            QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+        if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
+            QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
 
-    wizard = InstallerWizard()
-    wizard.show()
-    sys.exit(app.exec_())
+        app = QApplication(sys.argv)
+        app.setApplicationName("LabelImg2 Setup")
+        app.setWindowIcon(get_app_icon())
+
+        wizard = InstallerWizard()
+        wizard.show()
+        sys.exit(app.exec_())
+    except Exception as e:
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(0, f"安装程序启动遇到异常:\n{e}\n\n请确认系统支持或尝试使用源码免安装启动。", "LabelImg2 安装错误", 0x10)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
     main()
+

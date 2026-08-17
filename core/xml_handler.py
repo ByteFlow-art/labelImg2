@@ -117,7 +117,31 @@ class XMLHandler:
             except Exception:
                 pass
 
-        final_objects.extend(objects)
+        def calc_box_iou(b1, b2):
+            x1 = max(b1[0], b2[0])
+            y1 = max(b1[1], b2[1])
+            x2 = min(b1[2], b2[2])
+            y2 = min(b1[3], b2[3])
+            inter = max(0.0, x2 - x1) * max(0.0, y2 - y1)
+            a1 = max(0.0, b1[2] - b1[0]) * max(0.0, b1[3] - b1[1])
+            a2 = max(0.0, b2[2] - b2[0]) * max(0.0, b2[3] - b2[1])
+            union = a1 + a2 - inter
+            return inter / union if union > 0 else 0.0
+
+        for new_obj in objects:
+            new_box = new_obj.get("bbox", [0, 0, 0, 0])
+            new_cls = new_obj.get("class_name", "")
+            # 检查是否与已有目标高度重叠 (IoU > 0.85 且类别相同)
+            is_dup = False
+            for exist_obj in final_objects:
+                exist_box = exist_obj.get("bbox", [0, 0, 0, 0])
+                exist_cls = exist_obj.get("class_name", "")
+                if new_cls == exist_cls and calc_box_iou(new_box, exist_box) > 0.85:
+                    is_dup = True
+                    break
+            if not is_dup:
+                final_objects.append(new_obj)
+
 
         # 面积排序：面积大的置于底层(先写入XML)，面积小的置于顶层(后写入XML)
         def get_box_area(obj):
