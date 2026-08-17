@@ -13,9 +13,15 @@ class TrainDialog(QDialog):
 
     def __init__(self, default_image_dir: str = "", default_xml_dir: str = "", parent=None):
         super().__init__(parent)
-        self.setWindowTitle("YOLO模型训练")
-        self.setWindowIcon(self.get_icon("labelImg2.ico") if not self.get_icon("labelImg2.ico").isNull() else self.get_icon("labelImg2.png"))
-        self.resize(860, 790)
+        self.setWindowTitle("YOLO 模型训练与权重导出")
+        ico = self.get_icon("app.ico")
+        if ico.isNull():
+            ico = self.get_icon("app.png")
+        if ico.isNull():
+            ico = self.get_icon("labelImg2.ico")
+        self.setWindowIcon(ico)
+        self.resize(750, 720)
+
         self.setMinimumSize(760, 660)
         self.setStyleSheet(LIGHT_WORKSTATION_STYLE)
 

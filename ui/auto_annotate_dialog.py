@@ -26,8 +26,14 @@ class AutoAnnotateDialog(QDialog):
         super().__init__(parent)
         self.main_window = main_window_ref
         self.setWindowTitle("YOLO 模型中心")
-        self.setWindowIcon(self.get_icon("labelImg2.ico") if not self.get_icon("labelImg2.ico").isNull() else self.get_icon("labelImg2.png"))
+        ico = self.get_icon("app.ico")
+        if ico.isNull():
+            ico = self.get_icon("app.png")
+        if ico.isNull():
+            ico = self.get_icon("labelImg2.ico")
+        self.setWindowIcon(ico)
         self.resize(860, 800)
+
         self.setMinimumSize(780, 680)
         self.setStyleSheet(LIGHT_WORKSTATION_STYLE)
 

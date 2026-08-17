@@ -5,7 +5,12 @@ cd /d "%~dp0"
 echo [*] Creating Desktop Shortcut for LabelImg2 with App Icon...
 
 set "TARGET_BAT=%~dp0Start_LabelImg2.bat"
-set "ICON_FILE=%~dp0img\labelImg2.ico"
+if exist "%~dp0img\app.ico" (
+    set "ICON_FILE=%~dp0img\app.ico"
+) else (
+    set "ICON_FILE=%~dp0img\labelImg2.ico"
+)
+
 
 powershell -NoProfile -Command ^
     "$WshShell = New-Object -ComObject WScript.Shell; " ^

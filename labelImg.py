@@ -2337,10 +2337,15 @@ def get_main_app(argv=[]):
         except Exception:
             pass
 
-    app_icon = newIcon("labelImg2.ico")
+    app_icon = newIcon("app.ico")
+    if app_icon.isNull():
+        app_icon = newIcon("app.png")
+    if app_icon.isNull():
+        app_icon = newIcon("labelImg2.ico")
     if app_icon.isNull():
         app_icon = newIcon("labelImg2.png")
     app.setWindowIcon(app_icon)
+
     
     # Usage : labelImg.py image predefClassFile saveDir
     win = MainWindow(argv[1] if len(argv) >= 2 else None,
