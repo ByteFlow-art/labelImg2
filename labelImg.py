@@ -1844,11 +1844,18 @@ class MainWindow(QMainWindow, WindowMixin):
         self.lbl_session_count.setToolTip(f"本次打开工具期间累计新增标签框: {total_session_added} 个")
 
         # 2. 统计当前项目/文件夹所有已有标签总数
-        imglist = getattr(self.fileModel, 'imgList', []) or []
+        imglist = []
+        if hasattr(self, 'fileModel') and self.fileModel:
+            try:
+                imglist = self.fileModel.stringList() or []
+            except Exception:
+                imglist = []
+
         if not imglist:
             self.lbl_total_count.setText("总计: 0")
             self.lbl_total_count.setToolTip("当前项目暂无图片")
             return
+
 
         total_boxes = 0
 

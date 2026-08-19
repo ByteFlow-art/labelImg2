@@ -364,8 +364,7 @@ class AutoAnnotateDialog(QDialog):
 
             cls_summary = ", ".join([f"{k}:{v}" for k, v in class_counts.items()]) if class_counts else "无击中目标"
             msg = f"⚡ 单图推理测试成功: 耗时 {elapsed_ms:.1f} ms | 检测到 {len(boxes)} 个目标 ({cls_summary})"
-            self.lbl_status.setText(msg)
-            safe_print(f"[YOLO Model Test Terminal] {msg} (图片: {os.path.basename(img_path)})")
+            self.set_status(msg)
             QMessageBox.information(self, "模型单图测试结果", f"图片: {os.path.basename(img_path)}\n推理耗时: {elapsed_ms:.1f} ms\n目标数量: {len(boxes)} 个\n类别明细: {cls_summary}")
         except Exception as e:
             QMessageBox.critical(self, "测试失败", str(e))
@@ -398,23 +397,22 @@ class AutoAnnotateDialog(QDialog):
         fps = test_count / total_sec if total_sec > 0 else 0
 
         msg = f"🚀 测速完成: 评估 {test_count} 张图 | 平均耗时 {avg_ms:.1f} ms/张 ({fps:.1f} FPS) | 共击中 {total_boxes} 个目标"
-        self.lbl_status.setText(msg)
-        safe_print(f"[YOLO Benchmark Terminal] {msg}")
+        self.set_status(msg)
         QMessageBox.information(self, "模型推理测速报告", msg)
 
     def test_current_model(self):
         idx = self.combo_models.currentIndex()
         path_val = self.combo_models.itemData(idx)
         if not path_val or not os.path.exists(path_val):
-            self.lbl_status.setText("提示: 当前未选择有效的模型权重文件。")
+            self.set_status("提示: 当前未选择有效的模型权重文件。")
             QMessageBox.warning(self, "提示", "当前未选择有效的模型权重文件。")
             return
         try:
             class_dict = self.annotator.load_model(path_val)
             model_name = os.path.basename(path_val)
             msg = f"✅ 模型 {model_name} 加载测试成功！包含 {len(class_dict)} 个类别"
-            self.lbl_status.setText(msg)
-            safe_print(f"[YOLO Model Center Terminal] {msg}")
+            self.set_status(msg)
+
             # 展示类别列表，每行一个
             class_lines = [f"  [{k}]  {v}" for k, v in list(class_dict.items())[:30]]
             if len(class_dict) > 30:
@@ -527,6 +525,20 @@ class AutoAnnotateDialog(QDialog):
             self.load_model(f_path)
             self.refresh_model_selector()
 
+    def set_status(self, msg: str):
+        """安全更新状态，统一输出到终端与主窗口状态栏"""
+        if hasattr(self, 'lbl_status') and self.lbl_status is not None:
+            try:
+                self.lbl_status.setText(msg)
+            except Exception:
+                pass
+        if self.main_window and hasattr(self.main_window, 'statusBar'):
+            try:
+                self.main_window.statusBar().showMessage(msg, 4000)
+            except Exception:
+                pass
+        safe_print(f"[Model Center Terminal] {msg}")
+
     def on_model_selected(self, idx: int):
         if idx < 0:
             return
@@ -536,7 +548,7 @@ class AutoAnnotateDialog(QDialog):
         elif path_val:
             if not os.path.exists(path_val):
                 self.combo_models.removeItem(idx)
-                self.lbl_status.setText("提示: 所选模型文件在磁盘上不存在。")
+                self.set_status("提示: 所选模型文件在磁盘上不存在。")
                 return
             self.load_model(path_val)
 
@@ -552,9 +564,7 @@ class AutoAnnotateDialog(QDialog):
 
             self.populate_class_table(class_dict)
             msg = f"已加载模型: {os.path.basename(model_path)} (包含类别数: {len(class_dict)})"
-            self.lbl_status.setText(msg)
-            safe_print(f"[YOLO Model Center Terminal] {msg}")
-
+            self.set_status(msg)
 
             if self.main_window and hasattr(self.main_window, 'settings'):
                 self.main_window.settings['last_model_path'] = model_path
@@ -572,7 +582,8 @@ class AutoAnnotateDialog(QDialog):
             if not silent:
                 QMessageBox.critical(self, "模型载入失败", err_str)
             else:
-                self.lbl_status.setText(f"模型载入异常: {err_str}")
+                self.set_status(f"模型载入异常: {err_str}")
+
 
 
     def populate_class_table(self, class_dict: Dict[int, str]):
@@ -755,79 +766,50 @@ class AutoAnnotateDialog(QDialog):
                 iou_threshold=iou
             )
 
+            # 过滤未选中的类别并应用映射
+            filtered_boxes = []
+            for b in boxes:
+                raw_n = b.get("class_name", "object")
+                if mapping and raw_n not in mapping:
+                    continue
+                final_n = mapping.get(raw_n, raw_n) if mapping else raw_n
+                b_copy = dict(b)
+                b_copy["class_name"] = final_n
+                filtered_boxes.append(b_copy)
+
             if is_append:
-                # 1. 提取当前主界面画布上已存在的全部标注框 (保留旋转框、属性与颜色)
-                existing_shapes_info = []
-                if hasattr(self.main_window, 'canvas') and self.main_window.canvas.shapes:
-                    for s in self.main_window.canvas.shapes:
-                        pts = [(p.x(), p.y()) for p in s.points]
-                        line_c = s.line_color.getRgb() if s.line_color else None
-                        fill_c = s.fill_color.getRgb() if s.fill_color else None
-                        diff = getattr(s, 'difficult', False)
-                        is_rot = getattr(s, 'isRotated', False)
-                        direc = getattr(s, 'direction', 0)
-                        extra_lbl = getattr(s, 'extra_label', '')
-                        existing_shapes_info.append((s.label, pts, line_c, fill_c, diff, is_rot, direc, extra_lbl))
-                elif os.path.exists(xml_path):
-                    try:
-                        _, xml_objs = XMLHandler.read_pascal_voc_xml(xml_path)
-                        for obj in xml_objs:
-                            b = obj.get("bbox", [0, 0, 0, 0])
-                            pts = [(b[0], b[1]), (b[2], b[1]), (b[2], b[3]), (b[0], b[3])]
-                            existing_shapes_info.append((obj.get("class_name", ""), pts, None, None, False, False, 0, ''))
-                    except Exception:
-                        pass
+                # 1. 优先保存当前画布上的修改，确保最新基准写入 XML
+                if hasattr(self.main_window, 'saveFile') and hasattr(self.main_window, 'dirty') and self.main_window.dirty:
+                    self.main_window.saveFile()
 
-                # 计算 IoU 去重
-                def calc_iou(b1, b2):
-                    x1 = max(b1[0], b2[0])
-                    y1 = max(b1[1], b2[1])
-                    x2 = min(b1[2], b2[2])
-                    y2 = min(b1[3], b2[3])
-                    inter = max(0.0, x2 - x1) * max(0.0, y2 - y1)
-                    a1 = max(0.0, b1[2] - b1[0]) * max(0.0, b1[3] - b1[1])
-                    a2 = max(0.0, b2[2] - b2[0]) * max(0.0, b2[3] - b2[1])
-                    union = a1 + a2 - inter
-                    return inter / union if union > 0 else 0.0
+                # 2. 追加合并模式：与现有 XML 进行去重合并后保存
+                XMLHandler.save_pascal_voc_xml(
+                    image_path=img_path,
+                    objects=filtered_boxes,
+                    output_xml_path=xml_path,
+                    class_mapping=mapping,
+                    overwrite=False
+                )
 
-                new_shapes_count = 0
-                for box in boxes:
-                    raw_name = box.get("class_name", "object")
-                    final_name = mapping.get(raw_name, raw_name)
-                    bbox = box.get("bbox", [0, 0, 0, 0])
-                    is_dup = False
-                    for s_info in existing_shapes_info:
-                        s_label = s_info[0]
-                        s_pts = s_info[1]
-                        if s_label == final_name and len(s_pts) >= 2:
-                            xs = [p[0] for p in s_pts]
-                            ys = [p[1] for p in s_pts]
-                            exist_bbox = [min(xs), min(ys), max(xs), max(ys)]
-                            if calc_iou(bbox, exist_bbox) > 0.85:
-                                is_dup = True
-                                break
-                    if not is_dup:
-                        new_pts = [(bbox[0], bbox[1]), (bbox[2], bbox[1]), (bbox[2], bbox[3]), (bbox[0], bbox[3])]
-                        existing_shapes_info.append((final_name, new_pts, None, None, False, False, 0, ''))
-                        new_shapes_count += 1
-
-                # 重新载入画布并更新标注
-                if hasattr(self.main_window, 'loadLabels'):
-                    self.main_window.loadLabels(existing_shapes_info)
-                    if hasattr(self.main_window, 'saveFile'):
-                        self.main_window.saveFile()
-                    elif hasattr(self.main_window, 'saveLabels'):
-                        self.main_window.saveLabels(xml_path)
-                    if hasattr(self.main_window, 'setDirty'):
-                        self.main_window.setDirty()
+                # 3. 重新载入图片与已合并的全部标注文件，实现画布与列表完美无缝同步
+                if hasattr(self.main_window, 'defaultSaveDir'):
+                    self.main_window.defaultSaveDir = save_dir
+                if hasattr(self.main_window, 'loadFile'):
+                    self.main_window.loadFile(img_path)
+                if hasattr(self.main_window, 'setDirty'):
+                    self.main_window.setDirty()
+                if hasattr(self.main_window, 'markFileSavedInList'):
+                    self.main_window.markFileSavedInList(img_path)
+                if hasattr(self.main_window, 'update_stats'):
+                    self.main_window.update_stats()
 
                 mode_str = "追加合并模式"
-                status_msg = f"单图自动批注完成 [{mode_str}]: 保留原有标注，新增 {new_shapes_count} 个新目标 -> {os.path.basename(xml_path)}"
+                status_msg = f"单图自动批注完成 [{mode_str}]: 已在原标注基础上追加新检测目标 -> {os.path.basename(xml_path)}"
             else:
                 # 完全覆盖替换模式
                 XMLHandler.save_pascal_voc_xml(
                     image_path=img_path,
-                    objects=boxes,
+                    objects=filtered_boxes,
                     output_xml_path=xml_path,
                     class_mapping=mapping,
                     overwrite=True
@@ -836,13 +818,20 @@ class AutoAnnotateDialog(QDialog):
                     self.main_window.defaultSaveDir = save_dir
                 if hasattr(self.main_window, 'loadFile'):
                     self.main_window.loadFile(img_path)
+                if hasattr(self.main_window, 'setDirty'):
+                    self.main_window.setDirty()
+                if hasattr(self.main_window, 'markFileSavedInList'):
+                    self.main_window.markFileSavedInList(img_path)
+                if hasattr(self.main_window, 'update_stats'):
+                    self.main_window.update_stats()
 
                 mode_str = "完全覆盖模式"
-                status_msg = f"单图自动批注完成 [{mode_str}]: 替换为 {len(boxes)} 个目标 -> {os.path.basename(xml_path)}"
+                status_msg = f"单图自动批注完成 [{mode_str}]: 替换为 {len(filtered_boxes)} 个目标 -> {os.path.basename(xml_path)}"
 
             if hasattr(self.main_window, 'statusBar') and self.main_window.statusBar():
                 self.main_window.statusBar().showMessage(status_msg, 5000)
             safe_print(f"[Auto-Annotate Terminal] {status_msg}")
+
 
         except Exception as e:
             QMessageBox.critical(self, "批注出错", str(e))

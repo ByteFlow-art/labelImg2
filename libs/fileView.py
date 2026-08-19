@@ -11,8 +11,8 @@ from .pascal_voc_io import PascalVocReader, XML_EXT
 class CFileListModel(QStringListModel):
     def __init__(self, parent = None):
         super(CFileListModel, self).__init__(parent)
-        
         self.dispList = []
+        self.session_saved_files = set()
     
     def parseOne(self, s, openedDir = None, defaultSaveDir = None):
         candidates = []
@@ -54,6 +54,9 @@ class CFileListModel(QStringListModel):
 
         for s in strings:
             info = self.parseOne(s, openedDir, defaultSaveDir)
+            abs_s = os.path.abspath(s) if s else ""
+            if s in self.session_saved_files or abs_s in self.session_saved_files or info[0] in self.session_saved_files:
+                info[2] = True
             self.dispList.append(info)
 
         return super(CFileListModel, self).setStringList(strings)
@@ -75,9 +78,9 @@ class CFileListModel(QStringListModel):
         elif role == Qt.ToolTipRole:
             return super(CFileListModel, self).data(index, Qt.EditRole)
         elif role == Qt.BackgroundRole:
-            if item[2]:
+            if item[2] or (item[0] in self.session_saved_files):
                 # 当前运行期间创建/修改/保存的标注文件标为荧光绿
-                return QBrush(QColor(74, 222, 128, 160))
+                return QBrush(QColor(74, 222, 128, 180))
             elif item[1] is not None:
                 # 打开前磁盘上已有的标注文件为浅灰色
                 return QBrush(QColor(226, 232, 240))
@@ -87,9 +90,7 @@ class CFileListModel(QStringListModel):
         else:
             return super(CFileListModel, self).data(index, role)
 
-
     def setData(self, index, value, role = None):
-
         if index.row() < 0:
             return super(CFileListModel, self).setData(index, value, role)
 
@@ -99,8 +100,15 @@ class CFileListModel(QStringListModel):
                 info[1] = value
                 info[2] = True
                 self.dispList[index.row()] = info
+                str_list = self.stringList()
+                if index.row() < len(str_list):
+                    self.session_saved_files.add(str_list[index.row()])
+                    self.session_saved_files.add(os.path.abspath(str_list[index.row()]))
+                if len(info) > 0 and info[0]:
+                    self.session_saved_files.add(info[0])
 
         return super(CFileListModel, self).setData(index, value, role)
+
 
 
 class CFileItemEditDelegate(QStyledItemDelegate):
