@@ -505,9 +505,9 @@ class MainWindow(QMainWindow, WindowMixin):
         position = settings.get(SETTING_WIN_POSE, QPoint(0, 0))
         self.resize(size)
         self.move(position)
-        saveDir = settings.get(SETTING_SAVE_DIR, None)
-        self.lastOpenDir = settings.get(SETTING_LAST_OPEN_DIR, None)
-        if self.defaultSaveDir is None and saveDir is not None and os.path.exists(saveDir):
+        saveDir = settings.get(SETTING_SAVE_DIR, None) or settings.get('last_save_dir', None)
+        self.lastOpenDir = settings.get(SETTING_LAST_OPEN_DIR, None) or settings.get('last_image_dir', None)
+        if saveDir and os.path.exists(saveDir):
             self.defaultSaveDir = saveDir
             self.statusBar().showMessage('%s started. Annotation will be saved to %s' %
                                          (__appname__, self.defaultSaveDir))
@@ -1778,10 +1778,12 @@ class MainWindow(QMainWindow, WindowMixin):
 
         self.dirname = dirpath
         self.settings['last_image_dir'] = dirpath
+        self.settings[SETTING_LAST_OPEN_DIR] = dirpath
         # 仅在未配置自定义保存路径时，默认 label dir 与 image dir 一致
         if not self.defaultSaveDir or not os.path.exists(self.defaultSaveDir):
             self.defaultSaveDir = dirpath
             self.settings[SETTING_SAVE_DIR] = dirpath
+            self.settings['last_save_dir'] = dirpath
         self.settings.save()
 
         imglist = self.scanAllImages(dirpath)
@@ -1838,6 +1840,7 @@ class MainWindow(QMainWindow, WindowMixin):
 
         if not hasattr(self, 'fileModel') or not self.fileModel or self.fileModel.rowCount() == 0:
             self.lbl_session_count.setText("本次: 0")
+            self.lbl_session_count.setStyleSheet("font-size: 11px; font-weight: bold; color: #15803D; background: #DCFCE7; padding: 2px 5px; border-radius: 3px; border: 1px solid #86EFAC;")
             self.lbl_total_count.setText("总计: 0")
             return
 
@@ -1849,10 +1852,20 @@ class MainWindow(QMainWindow, WindowMixin):
 
         current_total = self.fileModel.getTotalBoxCount()
         initial_total = getattr(self, '_session_initial_total', 0)
-        session_added = max(0, current_total - initial_total)
+        session_delta = current_total - initial_total
 
-        self.lbl_session_count.setText(f"本次: {session_added}")
-        self.lbl_session_count.setToolTip(f"本次打开工具期间累计新增标签框: {session_added} 个 (当前总计: {current_total} - 初始总计: {initial_total})")
+        if session_delta > 0:
+            self.lbl_session_count.setText(f"本次: +{session_delta}")
+            self.lbl_session_count.setStyleSheet("font-size: 11px; font-weight: bold; color: #15803D; background: #DCFCE7; padding: 2px 5px; border-radius: 3px; border: 1px solid #86EFAC;")
+            self.lbl_session_count.setToolTip(f"本次打开工具期间累计净新增标签框: +{session_delta} 个 (当前总计: {current_total} - 初始总计: {initial_total})")
+        elif session_delta < 0:
+            self.lbl_session_count.setText(f"本次: {session_delta}")
+            self.lbl_session_count.setStyleSheet("font-size: 11px; font-weight: bold; color: #B91C1C; background: #FEE2E2; padding: 2px 5px; border-radius: 3px; border: 1px solid #EF4444;")
+            self.lbl_session_count.setToolTip(f"本次打开工具期间累计净减少标签框: {session_delta} 个 (当前总计: {current_total} - 初始总计: {initial_total})")
+        else:
+            self.lbl_session_count.setText("本次: 0")
+            self.lbl_session_count.setStyleSheet("font-size: 11px; font-weight: bold; color: #15803D; background: #DCFCE7; padding: 2px 5px; border-radius: 3px; border: 1px solid #86EFAC;")
+            self.lbl_session_count.setToolTip(f"本次打开工具期间标签框数量与初始一致 (总计: {current_total})")
 
         self.lbl_total_count.setText(f"总计: {current_total}")
         self.lbl_total_count.setToolTip(f"当前项目所有已有标签框总数: {current_total} 个 (共 {self.fileModel.rowCount()} 张图片)")

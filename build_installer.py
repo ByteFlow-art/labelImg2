@@ -20,6 +20,7 @@ def create_payload_zip():
     include_files = [
         "labelImg.py", "main.py", "requirements.txt",
         "Start_LabelImg2.bat", "setup_env.bat", "Create_Desktop_Shortcut.bat",
+        "uninstall_gui.py", "Uninstall_LabelImg2.bat",
         "yolov8n.pt", "yolo26n.pt", "LICENSE", "README.md", "界面预览.png"
     ]
 
@@ -55,7 +56,6 @@ def build_installer():
 
     out_name = "LabelImg2_Setup_v1.0.0"
 
-
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--noconfirm",
@@ -87,17 +87,10 @@ def build_installer():
 
     if result.returncode == 0:
         exe_path = os.path.join(ROOT_DIR, "dist", f"{out_name}.exe")
-        zip_path = os.path.join(ROOT_DIR, "dist", f"{out_name}.zip")
         print("\n=======================================================")
         print(f"[成功] LabelImg2 独立安装程序已成功生成！")
         print(f"安装包路径: {exe_path}")
         print(f"安装包大小: {os.path.getsize(exe_path) / (1024*1024):.2f} MB")
-        
-        print("正在自动生成发布压缩包 (ZIP)...")
-        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-            zf.write(exe_path, f"{out_name}.exe")
-        print(f"[成功] 发布压缩包已生成: {zip_path}")
-        print(f"压缩包大小: {os.path.getsize(zip_path) / (1024*1024):.2f} MB")
         print("=======================================================\n")
     else:
         print(f"\n[错误] 安装程序构建失败，退出码: {result.returncode}")

@@ -174,7 +174,7 @@ class InstallWorker(QThread):
                 with zipfile.ZipFile(payload_zip, 'r') as zf:
                     zf.extractall(self.target_dir)
             else:
-                for item in ["core", "libs", "ui", "utils", "data", "img", "labelImg.py", "requirements.txt", "Start_LabelImg2.bat", "setup_env.bat", "Create_Desktop_Shortcut.bat", "yolov8n.pt", "yolo26n.pt"]:
+                for item in ["core", "libs", "ui", "utils", "data", "img", "labelImg.py", "requirements.txt", "Start_LabelImg2.bat", "setup_env.bat", "Create_Desktop_Shortcut.bat", "uninstall_gui.py", "Uninstall_LabelImg2.bat", "yolov8n.pt", "yolo26n.pt"]:
                     src = os.path.join(bundle_dir, item)
                     dst = os.path.join(self.target_dir, item)
                     if os.path.isdir(src):
