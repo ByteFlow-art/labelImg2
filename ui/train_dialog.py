@@ -22,9 +22,17 @@ class TrainDialog(QDialog):
         if ico.isNull():
             ico = self.get_icon("labelImg2.ico")
         self.setWindowIcon(ico)
-        self.resize(750, 720)
 
-        self.setMinimumSize(760, 660)
+        screen = QApplication.primaryScreen()
+        if screen:
+            avail = screen.availableGeometry()
+            w = min(880, int(avail.width() * 0.85))
+            h = min(840, int(avail.height() * 0.92))
+            self.resize(w, h)
+        else:
+            self.resize(880, 840)
+
+        self.setMinimumSize(800, 680)
         self.setStyleSheet(LIGHT_WORKSTATION_STYLE)
 
         # 启用非模态窗口与完整的【最小化、最大化、关闭】功能
@@ -375,6 +383,7 @@ class TrainDialog(QDialog):
         """保存当前模型训练控制台的所有参数真实状态"""
         try:
             settings = QSettings("ByteFlow", "LabelImg2")
+            settings.setValue("trainer/geometry", self.saveGeometry())
             settings.setValue("trainer/epochs", int(self.spin_epochs.value()))
             settings.setValue("trainer/batch", int(self.spin_batch.value()))
             settings.setValue("trainer/imgsz", int(self.spin_imgsz.value()))
@@ -393,6 +402,10 @@ class TrainDialog(QDialog):
         """还原上次关闭前的真实参数状态"""
         try:
             settings = QSettings("ByteFlow", "LabelImg2")
+            geom = settings.value("trainer/geometry")
+            if geom:
+                self.restoreGeometry(geom)
+
             self.spin_epochs.setValue(settings.value("trainer/epochs", 50, type=int))
             self.spin_batch.setValue(settings.value("trainer/batch", 16, type=int))
             self.spin_imgsz.setValue(settings.value("trainer/imgsz", 640, type=int))

@@ -25,6 +25,7 @@ class Canvas(QWidget):
     selectionChanged = pyqtSignal(bool)
     shapeMoved = pyqtSignal()
     drawingPolygon = pyqtSignal(bool)
+    beforeShapeModified = pyqtSignal()
 
     hideRRect = pyqtSignal(bool)
     hideNRect = pyqtSignal(bool)
@@ -234,6 +235,11 @@ class Canvas(QWidget):
 
         # Polygon/Vertex moving.
         if Qt.LeftButton & ev.buttons():
+            if self.selectedVertex() or (self.selectedShape and self.prevPoint):
+                if not getattr(self, '_has_saved_drag_undo', False):
+                    self.beforeShapeModified.emit()
+                    self._has_saved_drag_undo = True
+
             if self.selectedVertex():
                 self.boundedMoveVertex(pos)
                 self.shapeMoved.emit()
@@ -327,6 +333,7 @@ class Canvas(QWidget):
         pos = self.transformPos(ev.pos())
         self.pressPos = ev.pos()
         self.wasDragged = False
+        self._has_saved_drag_undo = False
 
         if ev.button() == Qt.LeftButton and (ev.modifiers() & Qt.AltModifier):
             self.panStartPos = ev.pos()
@@ -352,6 +359,7 @@ class Canvas(QWidget):
             self.repaint()
 
     def mouseReleaseEvent(self, ev):
+        self._has_saved_drag_undo = False
         if getattr(self, 'dragIgnoreUntilMouseUp', False):
             self.dragIgnoreUntilMouseUp = False
             self.wasDragged = False
@@ -930,6 +938,7 @@ class Canvas(QWidget):
             self.update()
             return
 
+        self.beforeShapeModified.emit()
         self.current.isRotated = self.canDrawRotatedRect
         self.current.close()
         self.shapes.append(self.current)

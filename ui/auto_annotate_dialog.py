@@ -33,9 +33,17 @@ class AutoAnnotateDialog(QDialog):
         if ico.isNull():
             ico = self.get_icon("labelImg2.ico")
         self.setWindowIcon(ico)
-        self.resize(860, 800)
 
-        self.setMinimumSize(780, 680)
+        screen = QApplication.primaryScreen()
+        if screen:
+            avail = screen.availableGeometry()
+            w = min(920, int(avail.width() * 0.85))
+            h = min(860, int(avail.height() * 0.92))
+            self.resize(w, h)
+        else:
+            self.resize(920, 860)
+
+        self.setMinimumSize(800, 680)
         self.setStyleSheet(LIGHT_WORKSTATION_STYLE)
 
         # 窗口样式与非模态配置
@@ -653,6 +661,7 @@ class AutoAnnotateDialog(QDialog):
         """保存当前模型中心的所有参数真实状态"""
         try:
             settings = QSettings("ByteFlow", "LabelImg2")
+            settings.setValue("model_center/geometry", self.saveGeometry())
             settings.setValue("model_center/conf", int(self.slider_conf.value()))
             settings.setValue("model_center/iou", int(self.slider_iou.value()))
             settings.setValue("model_center/imgsz_idx", int(self.combo_imgsz.currentIndex()))
@@ -668,6 +677,10 @@ class AutoAnnotateDialog(QDialog):
         """还原上次关闭前的真实参数状态"""
         try:
             settings = QSettings("ByteFlow", "LabelImg2")
+            geom = settings.value("model_center/geometry")
+            if geom:
+                self.restoreGeometry(geom)
+
             conf_val = settings.value("model_center/conf", 25, type=int)
             iou_val = settings.value("model_center/iou", 45, type=int)
             self.slider_conf.setValue(conf_val)

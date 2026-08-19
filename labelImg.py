@@ -248,6 +248,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.canvas.scrollRequest.connect(self.scrollRequest)
 
         self.canvas.newShape.connect(self.newShape)
+        self.canvas.beforeShapeModified.connect(self.save_undo_state)
         self.canvas.shapeMoved.connect(self.setDirty)
         self.canvas.selectionChanged.connect(self.shapeSelectionChanged)
         self.canvas.singleClickSelected.connect(self.auto_expand_label_editor)
@@ -1426,8 +1427,11 @@ class MainWindow(QMainWindow, WindowMixin):
                         self.fileListView.scrollTo(cur_idx)
                         self.statFile.setText(f'{row + 1}/{len(str_list)}')
                         self.fileListView.viewport().update()
-                except Exception:
-                    pass
+            # 记录历史访问图片路径，支持跨图撤销返回上一张图片
+            if not hasattr(self, 'image_navigation_history'):
+                self.image_navigation_history = []
+            if not self.image_navigation_history or self.image_navigation_history[-1] != unicodeFilePath:
+                self.image_navigation_history.append(unicodeFilePath)
 
             self.canvas.setFocus(True)
             self.update_stats()
@@ -1494,6 +1498,7 @@ class MainWindow(QMainWindow, WindowMixin):
                 return True
             elif txt == 'x' and not mods and not is_typing_text:
                 if self.canvas.selectedShape:
+                    self.save_undo_state()
                     self.canvas.selectedShape.increaseLength()
                     self.canvas.shapeMoved.emit()
                     self.canvas.update()
@@ -1502,6 +1507,7 @@ class MainWindow(QMainWindow, WindowMixin):
                     return True
             elif txt == 'c' and not mods and not is_typing_text:
                 if self.canvas.selectedShape:
+                    self.save_undo_state()
                     self.canvas.selectedShape.increaseWidth()
                     self.canvas.shapeMoved.emit()
                     self.canvas.update()
@@ -1510,6 +1516,7 @@ class MainWindow(QMainWindow, WindowMixin):
                     return True
             elif txt == 'z' and not mods and not is_typing_text:
                 if self.canvas.selectedShape:
+                    self.save_undo_state()
                     self.canvas.selectedShape.isRotated = True
                     angle = self.canvas.get_dynamic_rotation_angle(1)
                     if not self.canvas.rotateOutOfBound(angle):
@@ -1522,6 +1529,7 @@ class MainWindow(QMainWindow, WindowMixin):
                     return True
             elif txt == 'v' and not mods and not is_typing_text:
                 if self.canvas.selectedShape:
+                    self.save_undo_state()
                     self.canvas.selectedShape.isRotated = True
                     angle = self.canvas.get_dynamic_rotation_angle(-1)
                     if not self.canvas.rotateOutOfBound(angle):
@@ -1565,6 +1573,7 @@ class MainWindow(QMainWindow, WindowMixin):
             event.accept()
             return
         elif txt == 'x' and self.canvas.selectedShape:
+            self.save_undo_state()
             self.canvas.selectedShape.increaseLength()
             self.canvas.shapeMoved.emit()
             self.canvas.update()
@@ -1573,6 +1582,7 @@ class MainWindow(QMainWindow, WindowMixin):
             event.accept()
             return
         elif txt == 'c' and self.canvas.selectedShape:
+            self.save_undo_state()
             self.canvas.selectedShape.increaseWidth()
             self.canvas.shapeMoved.emit()
             self.canvas.update()
@@ -2048,106 +2058,180 @@ class MainWindow(QMainWindow, WindowMixin):
         return os.path.dirname(self.filePath) if self.filePath else '.'
 
     def save_undo_state(self):
-        """保存当前图片标注框状态快照至撤销栈 (最多 50 步)"""
-        if not hasattr(self, 'undo_stack'):
-            self.undo_stack = []
-        if not hasattr(self, 'redo_stack'):
-            self.redo_stack = []
+        """保存当前图片标注框状态快照至撤销栈 (每张图片独立维护，最多 50 步)"""
+        if getattr(self, '_is_restoring_undo', False):
+            return
+        if not hasattr(self, 'image_undo_stacks'):
+            self.image_undo_stacks = {}
+        if not hasattr(self, 'image_redo_stacks'):
+            self.image_redo_stacks = {}
+
+        cur_file = self.filePath if self.filePath else "__default__"
+        if cur_file not in self.image_undo_stacks:
+            self.image_undo_stacks[cur_file] = []
+        if cur_file not in self.image_redo_stacks:
+            self.image_redo_stacks[cur_file] = []
 
         snapshot = [s.copy() for s in self.canvas.shapes]
-        self.undo_stack.append(snapshot)
-        if len(self.undo_stack) > 50:
-            self.undo_stack.pop(0)
-        self.redo_stack.clear()
+        self.image_undo_stacks[cur_file].append(snapshot)
+        if len(self.image_undo_stacks[cur_file]) > 50:
+            self.image_undo_stacks[cur_file].pop(0)
+        self.image_redo_stacks[cur_file].clear()
 
     def restore_shapes_snapshot(self, snapshot):
         """用快照完全同步重构 Canvas 与 右侧 Label 列表，保证 100% 同步"""
-        self.canvas.deleteAll()
-        self.labelModel.clear()
-        self.ShapeItemDict.clear()
-        self.ItemShapeDict.clear()
+        self._is_restoring_undo = True
+        try:
+            self.canvas.deleteAll()
+            self.labelModel.clear()
+            self.ShapeItemDict.clear()
+            self.ItemShapeDict.clear()
 
-        restored_shapes = [s.copy() for s in snapshot]
-        self.canvas.loadShapes(restored_shapes)
+            restored_shapes = [s.copy() for s in snapshot]
+            self.canvas.loadShapes(restored_shapes)
 
-        for shape in restored_shapes:
-            shape.paintLabel = self.paintLabelsOption.isChecked()
-            item0 = HashableQStandardItem(shape.label)
-            item1 = QStandardItem(shape.extra_label)
-            color = generateColorByText(shape.label)
-            item0.setBackground(color)
-            item1.setBackground(color)
-            self.labelModel.appendRow([item0, item1])
-            self.ShapeItemDict[shape] = item0
-            self.ItemShapeDict[item0] = shape
+            for shape in restored_shapes:
+                shape.paintLabel = self.paintLabelsOption.isChecked()
+                item0 = HashableQStandardItem(shape.label)
+                item1 = QStandardItem(shape.extra_label)
+                color = generateColorByText(shape.label)
+                item0.setBackground(color)
+                item1.setBackground(color)
+                self.labelModel.appendRow([item0, item1])
+                self.ShapeItemDict[shape] = item0
+                self.ItemShapeDict[item0] = shape
 
-        self.update_label_list_numbers()
+            self.update_label_list_numbers()
 
-        if restored_shapes:
-            self.canvas.selectShape(restored_shapes[-1])
-            self.shapeSelectionChanged(True)
-        else:
-            self.shapeSelectionChanged(False)
+            if restored_shapes:
+                self.canvas.selectShape(restored_shapes[-1])
+                self.shapeSelectionChanged(True)
+            else:
+                self.shapeSelectionChanged(False)
 
-        self.canvas.update()
-        self.setDirty()
+            self.canvas.update()
+            self.setDirty()
+        finally:
+            self._is_restoring_undo = False
 
     def toggle_undo_redo(self):
         """按下 R 键：点击一次回退到上次操作(Undo)，再次点击取消回退(Redo)，循环往复"""
+        cur_file = self.filePath if self.filePath else "__default__"
+        undo_st = self.image_undo_stacks.get(cur_file, []) if hasattr(self, 'image_undo_stacks') else []
+        redo_st = self.image_redo_stacks.get(cur_file, []) if hasattr(self, 'image_redo_stacks') else []
+
         last_action = getattr(self, '_last_r_toggle_action', 'redo')
-        if last_action == 'undo' and hasattr(self, 'redo_stack') and self.redo_stack:
+        if last_action == 'undo' and redo_st:
             self.redo_shape_action()
             self._last_r_toggle_action = 'redo'
             log_terminal("[Shortcut R Terminal] R 快捷键循环切换: 取消回退 (Redo)")
-        elif hasattr(self, 'undo_stack') and self.undo_stack:
+        elif undo_st:
             self.undo_shape_action()
             self._last_r_toggle_action = 'undo'
             log_terminal("[Shortcut R Terminal] R 快捷键循环切换: 回退到上次操作 (Undo)")
-        elif hasattr(self, 'redo_stack') and self.redo_stack:
+        elif redo_st:
             self.redo_shape_action()
             self._last_r_toggle_action = 'redo'
             log_terminal("[Shortcut R Terminal] R 快捷键循环切换: 取消回退 (Redo)")
         else:
-            log_terminal("[Shortcut R Terminal] 提示: 暂无历史操作记录可供回退/恢复")
+            # 当前图片无操作，尝试触发返回上一张图片
+            self.undo_shape_action()
 
     def undo_shape_action(self):
-        """按下 Ctrl+Z 撤销上一步框操作"""
-        if not hasattr(self, 'undo_stack') or not self.undo_stack:
-            self.statusBar().showMessage("提示: 撤销栈为空，无可撤销的操作", 3000)
-            log_terminal("[Shortcut Ctrl+Z Terminal] 提示: 当前图片没有可撤销的操作")
+        """
+        按下 Ctrl+Z 撤销操作:
+        1. 若当前图片有操作历史，回退到当前图片上次操作前的状态
+        2. 若当前图片未进行任何操作（或撤销栈已空），自动返回上一张图片并回退其最后一次操作
+        """
+        if not hasattr(self, 'image_undo_stacks'):
+            self.image_undo_stacks = {}
+        if not hasattr(self, 'image_redo_stacks'):
+            self.image_redo_stacks = {}
+        if not hasattr(self, 'image_navigation_history'):
+            self.image_navigation_history = []
+
+        cur_file = self.filePath if self.filePath else "__default__"
+        current_stack = self.image_undo_stacks.get(cur_file, [])
+
+        # 分支 1: 当前图片撤销栈非空，回退当前图片的操作
+        if current_stack:
+            if cur_file not in self.image_redo_stacks:
+                self.image_redo_stacks[cur_file] = []
+
+            current_snapshot = [s.copy() for s in self.canvas.shapes]
+            self.image_redo_stacks[cur_file].append(current_snapshot)
+
+            prev_snapshot = current_stack.pop()
+            self.restore_shapes_snapshot(prev_snapshot)
+
+            msg = f"[Shortcut Ctrl+Z] 已撤销当前图片的操作 (剩余撤销步数: {len(current_stack)})"
+            self.statusBar().showMessage(msg, 3000)
+            log_terminal(msg)
             return
 
-        if not hasattr(self, 'redo_stack'):
-            self.redo_stack = []
+        # 分支 2: 当前图片未进行任何操作，或者当前图片的撤销栈已撤完 -> 自动返回上一张图片
+        while self.image_navigation_history and self.image_navigation_history[-1] == self.filePath:
+            self.image_navigation_history.pop()
 
-        current_snapshot = [s.copy() for s in self.canvas.shapes]
-        self.redo_stack.append(current_snapshot)
+        if not self.image_navigation_history:
+            msg = "[Shortcut Ctrl+Z] 提示: 当前图片与历史图片均无可撤销的操作"
+            self.statusBar().showMessage(msg, 3000)
+            log_terminal(msg)
+            return
 
-        prev_snapshot = self.undo_stack.pop()
-        self.restore_shapes_snapshot(prev_snapshot)
+        prev_file = self.image_navigation_history.pop()
+        if not os.path.exists(prev_file):
+            msg = f"[Shortcut Ctrl+Z] 提示: 历史图片路径不存在: {prev_file}"
+            self.statusBar().showMessage(msg, 3000)
+            log_terminal(msg)
+            return
 
-        msg = f"[Shortcut Ctrl+Z Terminal] 已成功撤销上一步操作 (可重做步数: {len(self.redo_stack)}, 剩余撤销步数: {len(self.undo_stack)})"
+        # 加载上一张图片
+        log_terminal(f"[Shortcut Ctrl+Z] 当前图片无操作，正在返回上一张图片: {os.path.basename(prev_file)} ...")
+        self.loadFile(prev_file)
+
+        # 检查上一张图片是否有操作历史
+        prev_stack = self.image_undo_stacks.get(prev_file, [])
+        if prev_stack:
+            if prev_file not in self.image_redo_stacks:
+                self.image_redo_stacks[prev_file] = []
+            self.image_redo_stacks[prev_file].append([s.copy() for s in self.canvas.shapes])
+            prev_snapshot = prev_stack.pop()
+            self.restore_shapes_snapshot(prev_snapshot)
+            msg = f"[Shortcut Ctrl+Z] 已返回上一张图片 [{os.path.basename(prev_file)}] 并回退到其上次操作前的状态"
+        else:
+            msg = f"[Shortcut Ctrl+Z] 已返回上一张图片 [{os.path.basename(prev_file)}]"
+
         self.statusBar().showMessage(msg, 3000)
         log_terminal(msg)
 
     def redo_shape_action(self):
         """按下 Ctrl+Shift+Z 重做上一步撤销的操作"""
-        if not hasattr(self, 'redo_stack') or not self.redo_stack:
-            self.statusBar().showMessage("提示: 重做栈为空，无可重做的操作", 3000)
-            log_terminal("[Shortcut Ctrl+Shift+Z Terminal] 提示: 没有可重做的操作")
+        if not hasattr(self, 'image_redo_stacks'):
+            self.image_redo_stacks = {}
+        if not hasattr(self, 'image_undo_stacks'):
+            self.image_undo_stacks = {}
+
+        cur_file = self.filePath if self.filePath else "__default__"
+        current_redo = self.image_redo_stacks.get(cur_file, [])
+
+        if not current_redo:
+            self.statusBar().showMessage("提示: 当前图片重做栈为空，无可重做操作", 3000)
+            log_terminal("[Shortcut Ctrl+Shift+Z] 提示: 当前图片没有可重做的操作")
             return
 
-        if not hasattr(self, 'undo_stack'):
-            self.undo_stack = []
+        if cur_file not in self.image_undo_stacks:
+            self.image_undo_stacks[cur_file] = []
 
         current_snapshot = [s.copy() for s in self.canvas.shapes]
-        self.undo_stack.append(current_snapshot)
+        self.image_undo_stacks[cur_file].append(current_snapshot)
 
-        next_snapshot = self.redo_stack.pop()
+        next_snapshot = current_redo.pop()
         self.restore_shapes_snapshot(next_snapshot)
 
-        msg = f"[Shortcut Ctrl+Shift+Z Terminal] 已成功重做操作 (剩余重做步数: {len(self.redo_stack)})"
+        msg = f"[Shortcut Ctrl+Shift+Z] 已成功重做操作 (剩余重做步数: {len(current_redo)})"
         self.statusBar().showMessage(msg, 3000)
+        log_terminal(msg)
         log_terminal(msg)
 
     def copySelectedShapeToClipboard(self):

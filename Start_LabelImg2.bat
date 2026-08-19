@@ -58,9 +58,9 @@ if not defined CONDA_ACTIVATE (
 if defined CONDA_ACTIVATE (
     call "!CONDA_ACTIVATE!" labelimg2 >nul 2>&1
     if not errorlevel 1 (
-        python -c "import PyQt5" >nul 2>&1
-        if not errorlevel 1 (
-            start "" python "%SCRIPT_DIR%%APP_FILE%" %*
+        if defined CONDA_PREFIX (
+            set "QT_QPA_PLATFORM_PLUGIN_PATH=%CONDA_PREFIX%\Library\plugins\platforms"
+            start "" "!CONDA_PREFIX!\python.exe" "%SCRIPT_DIR%%APP_FILE%" %*
             exit /b 0
         )
     )
