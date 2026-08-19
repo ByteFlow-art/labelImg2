@@ -103,7 +103,25 @@ def build_installer():
         print(f"\n[错误] 安装程序构建失败，退出码: {result.returncode}")
 
     if os.path.exists(payload_zip):
-        os.remove(payload_zip)
+        try:
+            os.remove(payload_zip)
+        except Exception:
+            pass
+
+    # 清理 PyInstaller 产生的 build 临时中间文件夹与 spec 文件
+    build_dir = os.path.join(ROOT_DIR, "build")
+    if os.path.exists(build_dir):
+        try:
+            shutil.rmtree(build_dir, ignore_errors=True)
+        except Exception:
+            pass
+
+    spec_file = os.path.join(ROOT_DIR, f"{out_name}.spec")
+    if os.path.exists(spec_file):
+        try:
+            os.remove(spec_file)
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     build_installer()
