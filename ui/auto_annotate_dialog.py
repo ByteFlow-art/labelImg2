@@ -110,15 +110,11 @@ class AutoAnnotateDialog(QDialog):
         m_box.addWidget(btn_test_m)
 
         m_layout.addLayout(m_box)
-
-        self.lbl_device = QLabel("计算硬件设备: 检测中...")
-        self.lbl_device.setStyleSheet("font-size: 13px; color: #0284C7; font-weight: bold;")
-        m_layout.addWidget(self.lbl_device)
-
         layout.addLayout(m_layout)
 
         # 2. 专业化推理参数调节 (Conf, IoU, imgsz, device)
         layout.addWidget(self.create_section_header("2. 模型专业化推理参数调节"))
+
         t_layout = QVBoxLayout()
         t_layout.setSpacing(12)
 
@@ -320,13 +316,16 @@ class AutoAnnotateDialog(QDialog):
                     self.combo_save_format.blockSignals(False)
 
     def on_save_format_changed(self, index: int):
-        selected_fmt = self.combo_save_format.currentText()
-        self.save_format = selected_fmt
-        if self.main_window and hasattr(self.main_window, 'set_save_format'):
-            self.main_window.set_save_format(selected_fmt)
-        msg = f"[Model Center Terminal] 标注保存文件格式类型已切换为: {selected_fmt}"
-        self.lbl_status.setText(msg)
-        safe_print(msg)
+        try:
+            selected_fmt = self.combo_save_format.currentText()
+            self.save_format = selected_fmt
+            if self.main_window and hasattr(self.main_window, 'set_save_format'):
+                self.main_window.set_save_format(selected_fmt)
+            msg = f"[Model Center Terminal] 标注保存文件格式类型已切换为: {selected_fmt}"
+            safe_print(msg)
+        except Exception as e:
+            safe_print(f"[Model Center Error] 切换保存格式异常: {e}")
+
 
     def run_single_image_test(self):
         """运行单图模型推理测试，展示耗时、目标数与类别击中"""
@@ -550,12 +549,12 @@ class AutoAnnotateDialog(QDialog):
 
         try:
             class_dict = self.annotator.load_model(model_path)
-            self.lbl_device.setText(f"计算硬件设备: {self.annotator.device.upper()}")
 
             self.populate_class_table(class_dict)
             msg = f"已加载模型: {os.path.basename(model_path)} (包含类别数: {len(class_dict)})"
             self.lbl_status.setText(msg)
             safe_print(f"[YOLO Model Center Terminal] {msg}")
+
 
             if self.main_window and hasattr(self.main_window, 'settings'):
                 self.main_window.settings['last_model_path'] = model_path

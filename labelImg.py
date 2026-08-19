@@ -582,7 +582,7 @@ class MainWindow(QMainWindow, WindowMixin):
     def resetBackSample(self):
         self.back_sample = False
 
-    def set_save_format(self, format_name):
+    def set_save_format(self, format_name, *args, **kwargs):
         self.save_format = format_name
         self.settings['save_format'] = format_name
         self.settings.save()
@@ -599,6 +599,29 @@ class MainWindow(QMainWindow, WindowMixin):
                     self.auto_annotate_dialog.combo_save_format.blockSignals(True)
                     self.auto_annotate_dialog.combo_save_format.setCurrentIndex(idx)
                     self.auto_annotate_dialog.combo_save_format.blockSignals(False)
+
+    def markFileSavedInList(self, file_path_or_idx, shape_count=None):
+        """将保存/修改过的文件在右下角 File List 中高亮标为荧光绿"""
+        if not hasattr(self, 'fileModel') or not self.fileModel:
+            return
+        if shape_count is None and hasattr(self, 'canvas'):
+            shape_count = len(self.canvas.shapes)
+        if isinstance(file_path_or_idx, QModelIndex):
+            if file_path_or_idx.isValid():
+                self.fileModel.setData(file_path_or_idx, shape_count, Qt.BackgroundRole)
+                self.fileListView.viewport().update()
+        elif isinstance(file_path_or_idx, str) and file_path_or_idx:
+            try:
+                str_list = self.fileModel.stringList()
+                if file_path_or_idx in str_list:
+                    row = str_list.index(file_path_or_idx)
+                    idx = self.fileModel.index(row)
+                    if idx.isValid():
+                        self.fileModel.setData(idx, shape_count, Qt.BackgroundRole)
+                        self.fileListView.viewport().update()
+            except Exception:
+                pass
+
 
     def setClean(self):
         self.dirty = False
@@ -820,8 +843,8 @@ class MainWindow(QMainWindow, WindowMixin):
             if self.defaultSaveDir is not None:
                 self.labelList.earlyCommit()
                 if self.dirty is True:
-                    # 无论是否有标注框，均保存对应的标注文件（空标签则保存 0 个目标的空标注文件与对应文件夹）
-                    self.fileModel.setData(previous, len(self.canvas.shapes), Qt.BackgroundRole)
+                    # 无论是否有标注框，均保存对应的标注文件并标为荧光绿
+                    self.markFileSavedInList(previous, len(self.canvas.shapes))
                     self.saveFile()
                 elif len(self.canvas.shapes) == 0 and self.filePath:
                     # 对于从未保存过的空标签图片，同样自动保存一个空 XML
@@ -835,7 +858,7 @@ class MainWindow(QMainWindow, WindowMixin):
                         else:
                             xml_path = os.path.join(os.path.dirname(prev_file), stem) + '.xml'
                         if not os.path.exists(xml_path):
-                            self.fileModel.setData(previous, 0, Qt.BackgroundRole)
+                            self.markFileSavedInList(previous, 0)
                             self.saveFile()
             else:
                 self.changeSavedirDialog()
@@ -857,6 +880,7 @@ class MainWindow(QMainWindow, WindowMixin):
             self.canvas.selectedShape = None
             self.canvas.setHiding(False)
         self.resetBackSample()
+
 
     # Add chris
     def btnstate(self, item= None):
@@ -998,6 +1022,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.ShapeItemDict[shape] = item0
         self.ItemShapeDict[item0] = shape
         self.update_label_list_numbers()
+        self.update_stats()
 
         for action in self.actions.onShapesPresent:
             action.setEnabled(True)
@@ -1015,6 +1040,7 @@ class MainWindow(QMainWindow, WindowMixin):
             if item0 in self.ItemShapeDict:
                 del self.ItemShapeDict[item0]
         self.update_label_list_numbers()
+        self.update_stats()
 
     def remAllLabels(self):
         self.canvas.deleteAll()
@@ -1022,6 +1048,8 @@ class MainWindow(QMainWindow, WindowMixin):
         self.ShapeItemDict.clear()
         self.ItemShapeDict.clear()
         self.update_label_list_numbers()
+        self.update_stats()
+
 
 
     def loadLabels(self, shapes):
@@ -1760,6 +1788,32 @@ class MainWindow(QMainWindow, WindowMixin):
             self.paintCanvas()
             self.saveFile()
 
+    def resolve_image_xml_path(self, img_path):
+        """解析任意图片对应的实际 XML 标注文件路径"""
+        if not img_path:
+            return None
+        stem = os.path.splitext(os.path.basename(img_path))[0]
+        img_d = os.path.dirname(img_path)
+        candidates = []
+        if self.defaultSaveDir and os.path.exists(self.defaultSaveDir):
+            if self.dirname and os.path.exists(self.dirname):
+                try:
+                    rel = os.path.relpath(img_path, self.dirname)
+                    candidates.append(os.path.join(self.defaultSaveDir, os.path.splitext(rel)[0] + ".xml"))
+                except Exception:
+                    pass
+            candidates.append(os.path.join(self.defaultSaveDir, stem + ".xml"))
+        candidates.append(os.path.splitext(img_path)[0] + ".xml")
+        candidates.append(os.path.join(img_d, stem + ".xml"))
+        candidates.append(os.path.join(img_d, "Annotations", stem + ".xml"))
+        parent_d = os.path.dirname(img_d)
+        candidates.append(os.path.join(parent_d, "Annotations", stem + ".xml"))
+
+        for c in candidates:
+            if os.path.exists(c) and os.path.isfile(c):
+                return c
+        return None
+
     def update_stats(self):
         """实时更新右下角 File List 上方控制栏的数字统计"""
         if not hasattr(self, 'lbl_session_count') or not hasattr(self, 'lbl_total_count'):
@@ -1771,11 +1825,9 @@ class MainWindow(QMainWindow, WindowMixin):
             cur_count = len(cur_shapes)
             if self.filePath not in self._baseline_box_counts:
                 # 建立打开此图时的初始基准标签数（包括原本已有标签）
-                stem = os.path.splitext(os.path.basename(self.filePath))[0]
-                save_dir = getattr(self, 'defaultSaveDir', "") or (getattr(self, 'dirpath', "") or "")
-                xml_path = os.path.join(save_dir, f"{stem}.xml") if save_dir else os.path.join(os.path.dirname(self.filePath), f"{stem}.xml")
+                xml_path = self.resolve_image_xml_path(self.filePath)
                 initial_cnt = cur_count
-                if os.path.exists(xml_path):
+                if xml_path and os.path.exists(xml_path):
                     try:
                         tree = ET.parse(xml_path)
                         initial_cnt = len(tree.getroot().findall("object"))
@@ -1786,9 +1838,9 @@ class MainWindow(QMainWindow, WindowMixin):
             baseline = self._baseline_box_counts.get(self.filePath, 0)
             self._session_added_map[self.filePath] = max(0, cur_count - baseline)
 
-        # 本次打开工具以来累计新增的所有标签数
+        # 本次打开工具以来累计新增的所有标签数 (数字前不加 +)
         total_session_added = sum(self._session_added_map.values()) if hasattr(self, '_session_added_map') else 0
-        self.lbl_session_count.setText(f"本次: +{total_session_added}")
+        self.lbl_session_count.setText(f"本次: {total_session_added}")
         self.lbl_session_count.setToolTip(f"本次打开工具期间累计新增标签框: {total_session_added} 个")
 
         # 2. 统计当前项目/文件夹所有已有标签总数
@@ -1799,15 +1851,13 @@ class MainWindow(QMainWindow, WindowMixin):
             return
 
         total_boxes = 0
-        save_dir = getattr(self, 'defaultSaveDir', "") or (getattr(self, 'dirpath', "") or "")
 
         for img_path in imglist:
             if getattr(self, 'filePath', None) and img_path == self.filePath and hasattr(self, 'canvas'):
                 total_boxes += len(self.canvas.shapes)
             else:
-                stem = os.path.splitext(os.path.basename(img_path))[0]
-                xml_path = os.path.join(save_dir, f"{stem}.xml") if save_dir else os.path.join(os.path.dirname(img_path), f"{stem}.xml")
-                if os.path.exists(xml_path):
+                xml_path = self.resolve_image_xml_path(img_path)
+                if xml_path and os.path.exists(xml_path):
                     try:
                         mtime = os.path.getmtime(xml_path)
                         cached = self._xml_stats_cache.get(xml_path)
@@ -1823,6 +1873,7 @@ class MainWindow(QMainWindow, WindowMixin):
 
         self.lbl_total_count.setText(f"总计: {total_boxes}")
         self.lbl_total_count.setToolTip(f"当前项目所有已有标签框总数: {total_boxes} 个 (共 {len(imglist)} 张图片)")
+
 
 
 
@@ -1954,15 +2005,14 @@ class MainWindow(QMainWindow, WindowMixin):
             self.setClean()
             self.statusBar().showMessage('Saved to  %s' % annotationFilePath)
             self.statusBar().show()
-            if hasattr(self, 'filesm') and self.filesm:
-                cur = self.filesm.currentIndex()
-                if cur.isValid():
-                    self.fileModel.setData(cur, len(self.canvas.shapes), Qt.BackgroundRole)
-                    self.fileListView.viewport().update()
+            self.markFileSavedInList(self.filePath, len(self.canvas.shapes))
             if hasattr(self, '_xml_stats_cache'):
                 self._xml_stats_cache.pop(annotationFilePath, None)
                 self._xml_stats_cache.pop(annotationFilePath + XML_EXT, None)
+                if self.filePath:
+                    self._xml_stats_cache.pop(self.filePath, None)
             self.update_stats()
+
 
 
     def closeFile(self, _value=False):

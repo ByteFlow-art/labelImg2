@@ -15,16 +15,36 @@ class CFileListModel(QStringListModel):
         self.dispList = []
     
     def parseOne(self, s, openedDir = None, defaultSaveDir = None):
-        if openedDir is not None and defaultSaveDir is not None:
-            relname = os.path.relpath(s, openedDir)
-            relname = os.path.splitext(relname)[0]
-            xmlPath = os.path.join(defaultSaveDir, relname + XML_EXT)
-        else:
-            xmlPath = os.path.splitext(s)[0] + XML_EXT
-        if os.path.exists(xmlPath) and os.path.isfile(xmlPath):
-            tVocParser = PascalVocReader(xmlPath)
-            shapes = tVocParser.getShapes()
-            info = [os.path.split(s)[1], len(shapes), False]
+        candidates = []
+        stem = os.path.splitext(os.path.basename(s))[0]
+        if defaultSaveDir is not None and len(defaultSaveDir) and os.path.exists(defaultSaveDir):
+            if openedDir is not None and os.path.exists(openedDir):
+                try:
+                    relname = os.path.relpath(s, openedDir)
+                    relname = os.path.splitext(relname)[0]
+                    candidates.append(os.path.join(defaultSaveDir, relname + XML_EXT))
+                except Exception:
+                    pass
+            candidates.append(os.path.join(defaultSaveDir, stem + XML_EXT))
+        candidates.append(os.path.splitext(s)[0] + XML_EXT)
+        candidates.append(os.path.join(os.path.dirname(s), stem + XML_EXT))
+        candidates.append(os.path.join(os.path.dirname(s), "Annotations", stem + XML_EXT))
+        parent_d = os.path.dirname(os.path.dirname(s))
+        candidates.append(os.path.join(parent_d, "Annotations", stem + XML_EXT))
+
+        found_xml = None
+        for c in candidates:
+            if os.path.exists(c) and os.path.isfile(c):
+                found_xml = c
+                break
+
+        if found_xml:
+            try:
+                tVocParser = PascalVocReader(found_xml)
+                shapes = tVocParser.getShapes()
+                info = [os.path.split(s)[1], len(shapes), False]
+            except Exception:
+                info = [os.path.split(s)[1], 0, False]
         else:
             info = [os.path.split(s)[1], None, False]
         return info
@@ -39,6 +59,8 @@ class CFileListModel(QStringListModel):
         return super(CFileListModel, self).setStringList(strings)
 
     def data(self, index, role):
+        if not index.isValid() or index.row() >= len(self.dispList):
+            return super(CFileListModel, self).data(index, role)
         item = self.dispList[index.row()]
         pathname, count = item[0], item[1]
         if role == Qt.DisplayRole:
@@ -53,15 +75,18 @@ class CFileListModel(QStringListModel):
         elif role == Qt.ToolTipRole:
             return super(CFileListModel, self).data(index, Qt.EditRole)
         elif role == Qt.BackgroundRole:
-            if item[1] is None: # or item[1] == 0:
-                brush = QBrush(Qt.transparent)
-            else:
-                brush = QBrush(Qt.lightGray)
             if item[2]:
-                brush = QBrush(Qt.green)
-            return brush
+                # 当前运行期间创建/修改/保存的标注文件标为荧光绿
+                return QBrush(QColor(74, 222, 128, 160))
+            elif item[1] is not None:
+                # 打开前磁盘上已有的标注文件为浅灰色
+                return QBrush(QColor(226, 232, 240))
+            else:
+                # 尚未保存标注的文件为正常透明色
+                return QBrush(Qt.transparent)
         else:
             return super(CFileListModel, self).data(index, role)
+
 
     def setData(self, index, value, role = None):
 
