@@ -52,9 +52,13 @@ runs/val/
 *.swo
 *~
 .DS_Store
-/.vs/
-
-# Settings Cache
-*.pkl
-labelImg2Settings*.pkl
+# Packaging & Build Scripts (Local Only)
+build_exe.*
+build_installer.*
+installer_gui.py
+version_info.txt
+app_payload.zip
+*.lnk
+*.zip
+scratch/
 
