@@ -137,7 +137,7 @@ class MainWindow(QMainWindow, WindowMixin):
         labellistLayout = QVBoxLayout()
         labellistLayout.setContentsMargins(0, 0, 0, 0)
 
-        self.default_label = self.labelHist[0]
+        self.default_label = self.labelHist[0] if (self.labelHist and len(self.labelHist) > 0) else "object"
 
         # Create a widget for edit and diffc button
         self.diffcButton = QCheckBox(u'difficult')
@@ -1427,6 +1427,9 @@ class MainWindow(QMainWindow, WindowMixin):
                         self.fileListView.scrollTo(cur_idx)
                         self.statFile.setText(f'{row + 1}/{len(str_list)}')
                         self.fileListView.viewport().update()
+                except Exception:
+                    pass
+
             # 记录历史访问图片路径，支持跨图撤销返回上一张图片
             if not hasattr(self, 'image_navigation_history'):
                 self.image_navigation_history = []
@@ -2390,7 +2393,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.setDirty()
 
     def loadPredefinedClasses(self, predefClassesFile):
-        if os.path.exists(predefClassesFile) is True:
+        if predefClassesFile and os.path.exists(predefClassesFile):
             with codecs.open(predefClassesFile, 'r', 'utf8') as f:
                 for line in f:
                     line = line.strip()
