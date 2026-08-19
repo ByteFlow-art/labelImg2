@@ -19,9 +19,8 @@ def create_payload_zip():
     include_dirs = ["core", "libs", "ui", "utils", "data", "img"]
     include_files = [
         "labelImg.py", "main.py", "requirements.txt",
-        "Start_LabelImg2.bat", "Launch_LabelImg2.bat", "setup_env.bat", "Create_Desktop_Shortcut.bat",
-        "LabelImg2.lnk",
-        "yolov8n.pt", "yolo26n.pt", "LICENSE", "README.md"
+        "Start_LabelImg2.bat", "setup_env.bat", "Create_Desktop_Shortcut.bat",
+        "yolov8n.pt", "yolo26n.pt", "LICENSE", "README.md", "界面预览.png"
     ]
 
     with zipfile.ZipFile(payload_path, 'w', zipfile.ZIP_DEFLATED) as zf:
@@ -47,14 +46,15 @@ def create_payload_zip():
 def build_installer():
     payload_zip = create_payload_zip()
 
-    icon_path = os.path.join(ROOT_DIR, "img", "labelImg2.ico")
+    icon_path = os.path.join(ROOT_DIR, "img", "app.ico")
     if not os.path.exists(icon_path):
-        icon_path = os.path.join(ROOT_DIR, "img", "app.ico")
+        icon_path = os.path.join(ROOT_DIR, "img", "labelImg2.ico")
 
     version_info_path = os.path.join(ROOT_DIR, "version_info.txt")
     version_arg = [f"--version-file={version_info_path}"] if os.path.exists(version_info_path) else []
 
     out_name = "LabelImg2_Setup_v1.0.0"
+
 
     cmd = [
         sys.executable, "-m", "PyInstaller",

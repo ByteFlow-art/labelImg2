@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-LabelImg2 Next-Gen - 官方图形化安装向导 (Windows GUI Setup Installer)
-实现商业级应用安装流程：
-1. 欢迎界面与协议
-2. 选择安装目录
-3. 提取核心文件、自动配置 Python 运行环境与核心 AI 依赖
-4. 自动生成专属 App 图标桌面快捷方式与开始菜单入口
-5. 完成并直接启动工作台
+LabelImg2 - 官方图形化安装程序 (Windows Setup Installer)
+企业级向导流程：
+1. 欢迎与许可协议 (Welcome & License Agreement)
+2. 安装目录与快捷方式配置 (Destination Folder & Options)
+3. 核心文件部署与环境初始化 (Installation & Environment Setup)
+4. 安装完成与即刻启动 (Completion & Launch)
 """
 
 import os
@@ -14,33 +13,29 @@ import sys
 import shutil
 import zipfile
 import subprocess
-import threading
-import time
 
-# Ensure Qt can find platform plugins in PyInstaller bundle
 if hasattr(sys, '_MEIPASS'):
     plugin_path = os.path.join(sys._MEIPASS, 'PyQt5', 'Qt5', 'plugins')
     if os.path.exists(plugin_path):
         os.environ['QT_QPA_PLATFORM_PLUGIN_PATH'] = os.path.join(plugin_path, 'platforms')
 
-from PyQt5.QtCore import Qt, pyqtSignal, QThread, QSize, QCoreApplication
+from PyQt5.QtCore import Qt, pyqtSignal, QThread, QCoreApplication
 if hasattr(sys, '_MEIPASS'):
     plugin_path = os.path.join(sys._MEIPASS, 'PyQt5', 'Qt5', 'plugins')
     if os.path.exists(plugin_path):
         QCoreApplication.addLibraryPath(plugin_path)
 
-from PyQt5.QtGui import QIcon, QPixmap, QFont, QColor
-
+from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtWidgets import (
     QApplication, QWizard, QWizardPage, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QProgressBar, QTextEdit,
-    QCheckBox, QFileDialog, QMessageBox, QFrame
+    QCheckBox, QFileDialog, QMessageBox, QFrame, QGroupBox
 )
 
 INSTALLER_STYLE = """
 QWizard {
     background-color: #FFFFFF;
-    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
 }
 QWizardPage {
     background-color: #FFFFFF;
@@ -50,19 +45,18 @@ QLabel {
     font-size: 13px;
 }
 QLabel#title_label {
-    font-size: 18px;
+    font-size: 17px;
     font-weight: bold;
     color: #0F172A;
 }
 QLabel#subtitle_label {
-    font-size: 13px;
+    font-size: 12px;
     color: #64748B;
-    margin-bottom: 12px;
 }
 QLineEdit {
     border: 1px solid #CBD5E1;
-    border-radius: 6px;
-    padding: 8px 12px;
+    border-radius: 4px;
+    padding: 6px 10px;
     font-size: 13px;
     background: #F8FAFC;
     color: #0F172A;
@@ -75,10 +69,11 @@ QPushButton {
     background-color: #2563EB;
     color: #FFFFFF;
     border: none;
-    border-radius: 6px;
-    padding: 8px 18px;
+    border-radius: 4px;
+    padding: 7px 18px;
     font-size: 13px;
-    font-weight: bold;
+    font-weight: 600;
+    min-width: 75px;
 }
 QPushButton:hover {
     background-color: #1D4ED8;
@@ -96,25 +91,44 @@ QPushButton#btn_secondary:hover {
 }
 QProgressBar {
     border: 1px solid #E2E8F0;
-    border-radius: 6px;
+    border-radius: 4px;
     text-align: center;
     background: #F1F5F9;
-    height: 22px;
+    height: 20px;
+    font-size: 12px;
     font-weight: bold;
     color: #1E293B;
 }
 QProgressBar::chunk {
     background-color: #2563EB;
-    border-radius: 5px;
+    border-radius: 3px;
 }
 QTextEdit {
     border: 1px solid #E2E8F0;
-    border-radius: 6px;
+    border-radius: 4px;
     background: #0F172A;
     color: #38BDF8;
     font-family: "Consolas", "Courier New", monospace;
-    font-size: 12px;
-    padding: 8px;
+    font-size: 11px;
+    padding: 6px;
+}
+QGroupBox {
+    font-size: 13px;
+    font-weight: bold;
+    color: #334155;
+    border: 1px solid #E2E8F0;
+    border-radius: 6px;
+    margin-top: 10px;
+    padding-top: 12px;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 5px;
+}
+QCheckBox {
+    font-size: 13px;
+    color: #334155;
 }
 """
 
@@ -124,7 +138,7 @@ def get_bundle_dir():
     return os.path.abspath(os.path.dirname(__file__))
 
 def get_app_icon():
-    for ico_name in ["labelImg2.ico", "app.ico"]:
+    for ico_name in ["app.ico", "labelImg2.ico"]:
         ico_path = os.path.join(get_bundle_dir(), "img", ico_name)
         if os.path.exists(ico_path):
             return QIcon(ico_path)
@@ -135,16 +149,17 @@ def get_app_icon():
     return QIcon()
 
 
-
 class InstallWorker(QThread):
     progress_changed = pyqtSignal(int, str)
     log_received = pyqtSignal(str)
     finished_success = pyqtSignal(str)
     failed_error = pyqtSignal(str)
 
-    def __init__(self, target_dir: str):
+    def __init__(self, target_dir: str, create_desktop_shortcut: bool, auto_setup_env: bool):
         super().__init__()
         self.target_dir = os.path.abspath(target_dir)
+        self.create_desktop_shortcut = create_desktop_shortcut
+        self.auto_setup_env = auto_setup_env
 
     def run(self):
         try:
@@ -154,12 +169,11 @@ class InstallWorker(QThread):
             bundle_dir = get_bundle_dir()
             payload_zip = os.path.join(bundle_dir, "app_payload.zip")
 
-            self.progress_changed.emit(15, "正在解压 LabelImg2 核心程序文件...")
+            self.progress_changed.emit(15, "正在提取应用程序组件...")
             if os.path.exists(payload_zip):
                 with zipfile.ZipFile(payload_zip, 'r') as zf:
                     zf.extractall(self.target_dir)
             else:
-                # 源码安装模式复制
                 for item in ["core", "libs", "ui", "utils", "data", "img", "labelImg.py", "requirements.txt", "Start_LabelImg2.bat", "setup_env.bat", "Create_Desktop_Shortcut.bat", "yolov8n.pt", "yolo26n.pt"]:
                     src = os.path.join(bundle_dir, item)
                     dst = os.path.join(self.target_dir, item)
@@ -168,35 +182,36 @@ class InstallWorker(QThread):
                     elif os.path.isfile(src):
                         shutil.copy2(src, dst)
 
-            self.progress_changed.emit(40, "正在检测并配置 Python 深度学习运行环境...")
-            self.log_received.emit(f"[*] 目标安装目录: {self.target_dir}")
+            if self.auto_setup_env:
+                self.progress_changed.emit(40, "正在检测并配置 Python 运行环境...")
+                self.log_received.emit(f"[*] 目标安装路径: {self.target_dir}")
 
-            # 调用目标目录中的 setup_env.bat 进行自动化环境配置
-            setup_script = os.path.join(self.target_dir, "setup_env.bat")
-            if os.path.exists(setup_script):
-                self.log_received.emit("[*] 正在执行全自动环境初始化与依赖安装...")
-                p = subprocess.Popen(
-                    ["cmd.exe", "/c", setup_script, "--auto"],
-                    cwd=self.target_dir,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-                )
-                while True:
-                    line = p.stdout.readline()
-                    if not line and p.poll() is not None:
-                        break
-                    if line:
-                        stripped = line.strip()
-                        self.log_received.emit(stripped)
-                        if "步骤" in stripped:
-                            self.progress_changed.emit(65, stripped)
+                setup_script = os.path.join(self.target_dir, "setup_env.bat")
+                if os.path.exists(setup_script):
+                    self.log_received.emit("[*] 正在执行全自动环境检测与依赖项部署...")
+                    p = subprocess.Popen(
+                        ["cmd.exe", "/c", setup_script, "--auto"],
+                        cwd=self.target_dir,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        encoding="utf-8",
+                        errors="replace",
+                        creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+                    )
+                    while True:
+                        line = p.stdout.readline()
+                        if not line and p.poll() is not None:
+                            break
+                        if line:
+                            stripped = line.strip()
+                            self.log_received.emit(stripped)
+                            if "步骤" in stripped or "安装" in stripped:
+                                self.progress_changed.emit(70, stripped)
 
-            self.progress_changed.emit(85, "正在创建桌面与开始菜单快捷方式 (专属 App 图标)...")
-            self.create_shortcuts()
+            if self.create_desktop_shortcut:
+                self.progress_changed.emit(85, "正在创建桌面快捷方式...")
+                self.create_shortcuts()
 
             self.progress_changed.emit(100, "安装全部完成！")
             self.finished_success.emit(self.target_dir)
@@ -205,7 +220,9 @@ class InstallWorker(QThread):
             self.failed_error.emit(str(e))
 
     def create_shortcuts(self):
-        icon_path = os.path.join(self.target_dir, "img", "labelImg2.ico")
+        icon_path = os.path.join(self.target_dir, "img", "app.ico")
+        if not os.path.exists(icon_path):
+            icon_path = os.path.join(self.target_dir, "img", "labelImg2.ico")
         target_bat = os.path.join(self.target_dir, "Start_LabelImg2.bat")
 
         ps_cmd = (
@@ -215,7 +232,7 @@ class InstallWorker(QThread):
             f"$Shortcut.TargetPath = '{target_bat}'; "
             f"$Shortcut.WorkingDirectory = '{self.target_dir}'; "
             f"$Shortcut.IconLocation = '{icon_path},0'; "
-            f"$Shortcut.Description = 'LabelImg2 Next-Gen - AI 智能计算机视觉标注工作台'; "
+            f"$Shortcut.Description = 'LabelImg2 - AI 目标检测标注与模型自训练工作台'; "
             f"$Shortcut.Save();"
         )
         subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True)
@@ -224,26 +241,24 @@ class InstallWorker(QThread):
 class WelcomePage(QWizardPage):
     def __init__(self):
         super().__init__()
-        self.setTitle("欢迎使用 LabelImg2 Next-Gen 安装向导")
+        self.setTitle("欢迎使用 LabelImg2 安装向导")
         layout = QVBoxLayout(self)
         layout.setSpacing(14)
 
-        # 顶部 Logo 徽标
         logo_layout = QHBoxLayout()
         logo_lbl = QLabel()
         png_path = os.path.join(get_bundle_dir(), "img", "app.png")
         if not os.path.exists(png_path):
             png_path = os.path.join(get_bundle_dir(), "img", "labelImg2.png")
         if os.path.exists(png_path):
-            pix = QPixmap(png_path).scaled(80, 80, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            pix = QPixmap(png_path).scaled(64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             logo_lbl.setPixmap(pix)
         logo_layout.addWidget(logo_lbl)
 
-
         title_box = QVBoxLayout()
-        lbl_title = QLabel("LabelImg2 Next-Gen v1.0.0")
+        lbl_title = QLabel("LabelImg2 v1.0.0")
         lbl_title.setObjectName("title_label")
-        lbl_sub = QLabel("AI 智能计算机视觉标注与模型自训练一体化工作台")
+        lbl_sub = QLabel("深度学习目标检测标注与模型自训练一体化工作台")
         lbl_sub.setObjectName("subtitle_label")
         title_box.addWidget(lbl_title)
         title_box.addWidget(lbl_sub)
@@ -257,29 +272,33 @@ class WelcomePage(QWizardPage):
         layout.addWidget(line)
 
         desc = QLabel(
-            "本安装程序将引导您在电脑上安装 <b>LabelImg2 Next-Gen</b> 并自动完成全套 AI 运行环境的初始化搭建。<br><br>"
-            "<b>✨ 核心功能亮点：</b><br>"
-            "• 内置 YOLO 模型中心与单图/批量一键自动智能标注<br>"
-            "• 内置 YOLO 闭环模型微调控制台 (实时流式监控 Loss / mAP)<br>"
-            "• 支持水平矩形框与 OBB 任意角度旋转框 (动态变速旋转、长宽微调)<br>"
-            "• 0 目标空标签自动存盘与文件夹生成<br>"
-            "• 全自动环境检测与智能依赖配置，无需手动敲写任何命令<br><br>"
-            "点击 <b>「下一步」</b> 继续安装流程。"
+            "本安装程序将在您的计算机上安装 <b>LabelImg2</b> 并初始化所需运行环境。<br><br>"
+            "建议在继续之前关闭其他无关应用程序。<br><br>"
+            "本软件遵循开源 MIT 许可证发布，供学术研究与工业生产免费使用。<br><br>"
+            "点击 <b>「下一步」</b> 继续安装。"
         )
         desc.setWordWrap(True)
-        desc.setStyleSheet("line-height: 140%; font-size: 13px; color: #334155;")
+        desc.setStyleSheet("font-size: 13px; color: #334155; line-height: 160%;")
         layout.addWidget(desc)
+
         layout.addStretch()
+        self.chk_agree = QCheckBox("我接受许可协议条款 (MIT License)")
+        self.chk_agree.setChecked(True)
+        self.chk_agree.stateChanged.connect(self.completeChanged)
+        layout.addWidget(self.chk_agree)
+
+    def isComplete(self):
+        return self.chk_agree.isChecked()
 
 
 class DirectoryPage(QWizardPage):
     def __init__(self):
         super().__init__()
-        self.setTitle("选择安装目标文件夹")
+        self.setTitle("选择安装目标位置")
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
 
-        lbl = QLabel("请选择 LabelImg2 将要安装到的文件夹路径：")
+        lbl = QLabel("请指定 LabelImg2 将要安装到的目标文件夹：")
         layout.addWidget(lbl)
 
         path_box = QHBoxLayout()
@@ -287,15 +306,26 @@ class DirectoryPage(QWizardPage):
         self.txt_path = QLineEdit(default_dir)
         path_box.addWidget(self.txt_path)
 
-        btn_browse = QPushButton("浏览...")
+        btn_browse = QPushButton("浏览(B)...")
         btn_browse.setObjectName("btn_secondary")
         btn_browse.clicked.connect(self.browse_path)
         path_box.addWidget(btn_browse)
         layout.addLayout(path_box)
 
-        lbl_tip = QLabel("💡 提示: 建议安装在空间充足的固态硬盘 (SSD) 盘符，方便高速运行 AI 推理与模型训练。")
-        lbl_tip.setStyleSheet("font-size: 12px; color: #64748B;")
-        layout.addWidget(lbl_tip)
+        # 选项配置组
+        opt_group = QGroupBox("安装选项")
+        opt_layout = QVBoxLayout(opt_group)
+        opt_layout.setSpacing(8)
+
+        self.chk_shortcut = QCheckBox("创建桌面快捷方式")
+        self.chk_shortcut.setChecked(True)
+        opt_layout.addWidget(self.chk_shortcut)
+
+        self.chk_setup_env = QCheckBox("自动检测并配置 Python 深度学习运行环境")
+        self.chk_setup_env.setChecked(True)
+        opt_layout.addWidget(self.chk_setup_env)
+
+        layout.addWidget(opt_group)
 
         self.registerField("install_dir*", self.txt_path)
         layout.addStretch()
@@ -309,12 +339,12 @@ class DirectoryPage(QWizardPage):
 class ProgressPage(QWizardPage):
     def __init__(self):
         super().__init__()
-        self.setTitle("正在安装与配置环境")
-        self.setSubTitle("安装程序正在部署核心文件并配置 Python 深度学习运行环境，请稍候...")
+        self.setTitle("正在安装 LabelImg2")
+        self.setSubTitle("安装向导正在部署文件并初始化环境，请稍候...")
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
 
-        self.lbl_status = QLabel("准备安装...")
+        self.lbl_status = QLabel("正在准备安装...")
         self.lbl_status.setStyleSheet("font-weight: bold; color: #0F172A;")
         layout.addWidget(self.lbl_status)
 
@@ -326,15 +356,19 @@ class ProgressPage(QWizardPage):
         self.log_view.setReadOnly(True)
         layout.addWidget(self.log_view)
 
-        self.worker: Optional[InstallWorker] = None
+        self.worker = None
         self.is_installed = False
 
     def initializePage(self):
         target_dir = self.field("install_dir")
+        chk_shortcut = self.wizard().dir_page.chk_shortcut.isChecked()
+        chk_env = self.wizard().dir_page.chk_setup_env.isChecked()
+
         self.wizard().button(QWizard.BackButton).setEnabled(False)
         self.wizard().button(QWizard.NextButton).setEnabled(False)
+        self.wizard().button(QWizard.CancelButton).setEnabled(False)
 
-        self.worker = InstallWorker(target_dir)
+        self.worker = InstallWorker(target_dir, chk_shortcut, chk_env)
         self.worker.progress_changed.connect(self.on_progress)
         self.worker.log_received.connect(self.on_log)
         self.worker.finished_success.connect(self.on_success)
@@ -354,9 +388,10 @@ class ProgressPage(QWizardPage):
         self.wizard().next()
 
     def on_error(self, err: str):
-        self.lbl_status.setText(f"❌ 安装过程出错: {err}")
+        self.lbl_status.setText(f"安装过程出错: {err}")
         QMessageBox.critical(self, "安装失败", f"安装过程中发生错误:\n{err}")
         self.wizard().button(QWizard.BackButton).setEnabled(True)
+        self.wizard().button(QWizard.CancelButton).setEnabled(True)
 
     def isComplete(self):
         return self.is_installed
@@ -365,25 +400,25 @@ class ProgressPage(QWizardPage):
 class FinishedPage(QWizardPage):
     def __init__(self):
         super().__init__()
-        self.setTitle("LabelImg2 Next-Gen 安装完成！")
+        self.setTitle("LabelImg2 安装向导完成")
         layout = QVBoxLayout(self)
-        layout.setSpacing(16)
+        layout.setSpacing(14)
 
-        lbl_success = QLabel("🎉 恭喜！LabelImg2 标注工作台已成功安装到您的电脑。")
+        lbl_success = QLabel("LabelImg2 已成功安装到您的计算机。")
         lbl_success.setStyleSheet("font-size: 15px; font-weight: bold; color: #16A34A;")
         layout.addWidget(lbl_success)
 
         desc = QLabel(
-            "• 已在您的电脑桌面上创建了带有专属 App 图标的快捷方式 <b>[LabelImg2]</b><br>"
-            "• 全部深度学习 AI 依赖环境已就绪，无需手动启动命令行。"
+            "您可以通过桌面快捷方式随时启动 <b>LabelImg2</b> 工作台。<br><br>"
+            "点击 <b>「完成」</b> 按钮退出安装向导。"
         )
         desc.setWordWrap(True)
-        desc.setStyleSheet("font-size: 13px; color: #334155; line-height: 150%;")
+        desc.setStyleSheet("font-size: 13px; color: #334155; line-height: 160%;")
         layout.addWidget(desc)
 
-        self.chk_launch = QCheckBox("立即启动 LabelImg2 AI 标注工作台")
+        self.chk_launch = QCheckBox("立即运行 LabelImg2 工作台")
         self.chk_launch.setChecked(True)
-        self.chk_launch.setStyleSheet("font-size: 14px; font-weight: bold; color: #2563EB; margin-top: 10px;")
+        self.chk_launch.setStyleSheet("font-size: 13px; font-weight: bold; color: #2563EB; margin-top: 12px;")
         layout.addWidget(self.chk_launch)
 
         layout.addStretch()
@@ -392,9 +427,9 @@ class FinishedPage(QWizardPage):
 class InstallerWizard(QWizard):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("LabelImg2 Next-Gen v1.0.0 安装向导")
+        self.setWindowTitle("LabelImg2 v1.0.0 安装程序")
         self.setWindowIcon(get_app_icon())
-        self.resize(650, 520)
+        self.resize(580, 440)
         self.setStyleSheet(INSTALLER_STYLE)
         self.setWizardStyle(QWizard.ModernStyle)
 
@@ -408,13 +443,12 @@ class InstallerWizard(QWizard):
         self.finish_page = FinishedPage()
         self.addPage(self.finish_page)
 
-        self.setButtonText(QWizard.NextButton, "下一步 >")
-        self.setButtonText(QWizard.BackButton, "< 上一步")
-        self.setButtonText(QWizard.FinishButton, "完成")
+        self.setButtonText(QWizard.NextButton, "下一步(N) >")
+        self.setButtonText(QWizard.BackButton, "< 上一步(B)")
+        self.setButtonText(QWizard.FinishButton, "完成(F)")
         self.setButtonText(QWizard.CancelButton, "取消")
 
     def accept(self):
-        # 点击完成时判断是否立即启动
         if hasattr(self.finish_page, 'chk_launch') and self.finish_page.chk_launch.isChecked():
             target_dir = self.field("install_dir")
             bat_path = os.path.join(target_dir, "Start_LabelImg2.bat")
@@ -439,10 +473,11 @@ def main():
         sys.exit(app.exec_())
     except Exception as e:
         import ctypes
-        ctypes.windll.user32.MessageBoxW(0, f"安装程序启动遇到异常:\n{e}\n\n请确认系统支持或尝试使用源码免安装启动。", "LabelImg2 安装错误", 0x10)
+        ctypes.windll.user32.MessageBoxW(0, f"安装向导启动异常:\n{e}", "LabelImg2 Setup Error", 0x10)
         sys.exit(1)
 
 
 if __name__ == "__main__":
     main()
+
 

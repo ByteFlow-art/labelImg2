@@ -1,35 +1,41 @@
 @echo off
+chcp 65001 >nul
 setlocal enabledelayedexpansion
 
 set "SCRIPT_DIR=%~dp0"
 cd /d "%SCRIPT_DIR%"
+title LabelImg2
 
-title LabelImg2 Next-Gen
-
-set "ENV_NAME=labelimg2"
 set "APP_FILE=labelImg.py"
 
 if not exist "%SCRIPT_DIR%%APP_FILE%" (
-    echo [ERROR] Cannot find %APP_FILE% in %SCRIPT_DIR%
+    echo [错误] 未在当前目录下找到主程序文件: %APP_FILE%
+    echo 脚本所在路径: %SCRIPT_DIR%
     pause
     exit /b 1
 )
 
-set "PYTHON_EXE="
-
+:: 1. 优先检测项目本地虚拟环境 (.venv)
 if exist "%SCRIPT_DIR%.venv\Scripts\python.exe" (
-    set "PYTHON_EXE=%SCRIPT_DIR%.venv\Scripts\python.exe"
-    goto :START_APP
+    "%SCRIPT_DIR%.venv\Scripts\python.exe" -c "import PyQt5" >nul 2>&1
+    if not errorlevel 1 (
+        start "" "%SCRIPT_DIR%.venv\Scripts\python.exe" "%SCRIPT_DIR%%APP_FILE%" %*
+        exit /b 0
+    )
 )
 
+:: 2. 检测本地便携式 Python 环境 (python_embed)
 if exist "%SCRIPT_DIR%python_embed\python.exe" (
-    set "PYTHON_EXE=%SCRIPT_DIR%python_embed\python.exe"
-    goto :START_APP
+    "%SCRIPT_DIR%python_embed\python.exe" -c "import PyQt5" >nul 2>&1
+    if not errorlevel 1 (
+        start "" "%SCRIPT_DIR%python_embed\python.exe" "%SCRIPT_DIR%%APP_FILE%" %*
+        exit /b 0
+    )
 )
 
+:: 3. 检测常见 Conda 管理器与 labelimg2 虚拟环境
 set "CONDA_ACTIVATE="
 for %%P in (
-    "C:\D\Conda\miniconda3\Scripts\activate.bat"
     "%USERPROFILE%\miniconda3\Scripts\activate.bat"
     "%USERPROFILE%\anaconda3\Scripts\activate.bat"
     "C:\ProgramData\miniconda3\Scripts\activate.bat"
@@ -38,6 +44,7 @@ for %%P in (
     "C:\Anaconda3\Scripts\activate.bat"
     "D:\Anaconda3\Scripts\activate.bat"
     "D:\miniconda3\Scripts\activate.bat"
+    "C:\D\Conda\miniconda3\Scripts\activate.bat"
 ) do (
     if not defined CONDA_ACTIVATE if exist "%%~P" set "CONDA_ACTIVATE=%%~P"
 )
@@ -49,37 +56,40 @@ if not defined CONDA_ACTIVATE (
 )
 
 if defined CONDA_ACTIVATE (
-    call "!CONDA_ACTIVATE!" "%ENV_NAME%" >nul 2>&1
+    call "!CONDA_ACTIVATE!" labelimg2 >nul 2>&1
     if not errorlevel 1 (
-        for /f "delims=" %%I in ('where python 2^>nul') do (
-            if not defined PYTHON_EXE set "PYTHON_EXE=%%~fI"
-        )
-        if defined PYTHON_EXE (
-            if defined CONDA_PREFIX (
-                set "QT_QPA_PLATFORM_PLUGIN_PATH=%CONDA_PREFIX%\Library\plugins\platforms"
-            )
-            goto :START_APP
+        python -c "import PyQt5" >nul 2>&1
+        if not errorlevel 1 (
+            start "" python "%SCRIPT_DIR%%APP_FILE%" %*
+            exit /b 0
         )
     )
 )
 
+:: 4. 检测系统全局 Python 环境
 for /f "delims=" %%I in ('where python.exe 2^>nul') do (
-    if not defined PYTHON_EXE set "PYTHON_EXE=%%~fI"
-)
-
-if defined PYTHON_EXE (
-    "!PYTHON_EXE!" -c "import PyQt5" >nul 2>&1
+    "%%~fI" -c "import PyQt5" >nul 2>&1
     if not errorlevel 1 (
-        goto :START_APP
+        start "" "%%~fI" "%SCRIPT_DIR%%APP_FILE%" %*
+        exit /b 0
     )
 )
 
-echo [*] Initializing LabelImg2 environment...
-call "%SCRIPT_DIR%setup_env.bat"
+:: 5. 首次启动或未配置环境：自动调用环境初始化向导
+echo ==============================================================================
+echo                 LabelImg2 首次启动 - 正在自动配置运行环境
+echo ==============================================================================
+echo.
+if exist "%SCRIPT_DIR%setup_env.bat" (
+    call "%SCRIPT_DIR%setup_env.bat" --auto
+    if exist "%SCRIPT_DIR%.venv\Scripts\python.exe" (
+        start "" "%SCRIPT_DIR%.venv\Scripts\python.exe" "%SCRIPT_DIR%%APP_FILE%" %*
+        exit /b 0
+    )
+) else (
+    echo [错误] 缺失环境配置文件 setup_env.bat，请确保项目文件完整。
+    pause
+)
+
 exit /b 0
 
-:START_APP
-echo [*] Launching LabelImg2 Workstation...
-start "" "!PYTHON_EXE!" "%SCRIPT_DIR%%APP_FILE%" %*
-endlocal
-exit /b 0
