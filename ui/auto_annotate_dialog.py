@@ -295,19 +295,14 @@ class AutoAnnotateDialog(QDialog):
 
         # 6. 进度条 (仅批量任务时显示)
         self.progress_bar = QProgressBar()
-        self.progress_bar.setValue(0)
-        self.progress_bar.setStyleSheet("height: 18px;")
         self.progress_bar.setVisible(False)
         layout.addWidget(self.progress_bar)
 
         scroll_area.setWidget(container)
         main_layout.addWidget(scroll_area)
 
-
-        # 默认加载初始模型
-        self.on_model_selected(0)
-
     def sync_paths_from_main_window(self):
+
         """同步 LabelImg 主窗口中当前打开的图片路径、保存路径与保存格式"""
         if self.main_window:
             cur_img_dir = getattr(self.main_window, 'dirpath', "") or getattr(self.main_window, 'lastOpenDir', "") or ""
@@ -458,24 +453,28 @@ class AutoAnnotateDialog(QDialog):
         model_items = []
         seen_paths = set()
 
-        for folder_name in ("models", "weights", os.path.join("runs", "train")):
-            search_d = os.path.join(os.getcwd(), folder_name)
-            if os.path.exists(search_d):
-                for root_dir, _, files in os.walk(search_d):
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        search_dirs = [
+            base_dir,
+            os.path.join(base_dir, "models"),
+            os.path.join(base_dir, "weights"),
+            os.path.join(base_dir, "runs", "train"),
+            os.getcwd(),
+            os.path.join(os.getcwd(), "models"),
+            os.path.join(os.getcwd(), "weights"),
+            os.path.join(os.getcwd(), "runs", "train")
+        ]
+
+        for s_dir in search_dirs:
+            if s_dir and os.path.exists(s_dir):
+                for root_dir, _, files in os.walk(s_dir):
                     for f in files:
                         if f.endswith(".pt") or f.endswith(".onnx") or f.endswith(".engine"):
                             full_p = os.path.abspath(os.path.join(root_dir, f))
                             if full_p not in seen_paths and os.path.exists(full_p):
                                 seen_paths.add(full_p)
-                                rel_p = os.path.relpath(full_p, os.getcwd())
-                                model_items.append((f"模型库: {rel_p}", full_p))
-
-        for f in os.listdir(os.getcwd()):
-            if f.endswith(".pt") or f.endswith(".onnx") or f.endswith(".engine"):
-                full_p = os.path.abspath(os.path.join(os.getcwd(), f))
-                if full_p not in seen_paths and os.path.exists(full_p):
-                    seen_paths.add(full_p)
-                    model_items.append((f"当前目录: {f}", full_p))
+                                rel_p = os.path.relpath(full_p, base_dir)
+                                model_items.append((f"模型: {rel_p}", full_p))
 
         # 如果已有加载的模型不在扫描列表中，单独置顶加入
         if current_selected_path and os.path.exists(current_selected_path):
@@ -507,7 +506,8 @@ class AutoAnnotateDialog(QDialog):
             saved = getattr(self, '_last_model_dir', None)
             if saved and os.path.exists(saved):
                 return saved
-        return os.getcwd()
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return base_dir if os.path.exists(base_dir) else os.getcwd()
 
     def update_last_dir(self, selected_path: str):
         if not selected_path:
@@ -529,6 +529,8 @@ class AutoAnnotateDialog(QDialog):
             self.refresh_model_selector()
 
     def on_model_selected(self, idx: int):
+        if idx < 0:
+            return
         path_val = self.combo_models.itemData(idx)
         if path_val == "custom":
             self.browse_custom_model()
@@ -539,9 +541,10 @@ class AutoAnnotateDialog(QDialog):
                 return
             self.load_model(path_val)
 
-    def load_model(self, model_path: str):
+    def load_model(self, model_path: str, silent: bool = False):
         if not os.path.exists(model_path):
-            QMessageBox.warning(self, "警告", f"模型文件不存在: {model_path}")
+            if not silent:
+                QMessageBox.warning(self, "警告", f"模型文件不存在: {model_path}")
             self.refresh_model_selector()
             return
 
@@ -565,7 +568,13 @@ class AutoAnnotateDialog(QDialog):
                     self.combo_models.blockSignals(False)
                     break
         except Exception as e:
-            QMessageBox.critical(self, "模型载入失败", str(e))
+            err_str = str(e)
+            safe_print(f"[YOLO Model Center Error] 模型载入异常: {err_str}")
+            if not silent:
+                QMessageBox.critical(self, "模型载入失败", err_str)
+            else:
+                self.lbl_status.setText(f"模型载入异常: {err_str}")
+
 
     def populate_class_table(self, class_dict: Dict[int, str]):
         self.table_cls.setRowCount(len(class_dict))
@@ -674,9 +683,16 @@ class AutoAnnotateDialog(QDialog):
 
             last_pt = settings.value("model_center/last_model_path", "", type=str)
             if last_pt and os.path.exists(last_pt):
-                self.load_model(last_pt)
+                self.load_model(last_pt, silent=True)
+            else:
+                for i in range(self.combo_models.count()):
+                    p = self.combo_models.itemData(i)
+                    if p and p != "custom" and os.path.exists(p):
+                        self.load_model(p, silent=True)
+                        break
         except Exception:
             pass
+
 
     def closeEvent(self, event):
         self.save_settings()

@@ -185,6 +185,7 @@ class MainWindow(QMainWindow, WindowMixin):
 
         filelistLayout = QVBoxLayout()
         filelistLayout.setContentsMargins(0, 0, 0, 0)
+        filelistLayout.setSpacing(0)
 
         self.prevButton = QToolButton()
         self.nextButton = QToolButton()
@@ -192,81 +193,30 @@ class MainWindow(QMainWindow, WindowMixin):
         self.prevButton.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self.nextButton.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self.playButton.setToolButtonStyle(Qt.ToolButtonIconOnly)
+
         self.controlButtonsLayout = QHBoxLayout()
         self.controlButtonsLayout.setAlignment(Qt.AlignLeft)
+        self.controlButtonsLayout.setContentsMargins(4, 2, 4, 2)
+        self.controlButtonsLayout.setSpacing(4)
         self.controlButtonsLayout.addWidget(self.prevButton)
         self.controlButtonsLayout.addWidget(self.nextButton)
         self.controlButtonsLayout.addWidget(self.playButton)
 
+        self.controlButtonsLayout.addStretch()
+
+        # 上方控制栏右侧统计: 本次打开工具新增标签数 与 所有已有标签总数
+        self.lbl_session_count = QLabel("本次: +0")
+        self.lbl_session_count.setStyleSheet("font-size: 11px; font-weight: bold; color: #15803D; background: #DCFCE7; padding: 2px 5px; border-radius: 3px; border: 1px solid #86EFAC;")
+        self.lbl_session_count.setToolTip("本次打开工具期间累计新增的标注框数量")
+        self.controlButtonsLayout.addWidget(self.lbl_session_count)
+
+        self.lbl_total_count = QLabel("总计: 0")
+        self.lbl_total_count.setStyleSheet("font-size: 11px; font-weight: bold; color: #1D4ED8; background: #DBEAFE; padding: 2px 5px; border-radius: 3px; border: 1px solid #93C5FD;")
+        self.lbl_total_count.setToolTip("当前项目所有图片中已存在的标注框总数")
+        self.controlButtonsLayout.addWidget(self.lbl_total_count)
+
+        filelistLayout.addLayout(self.controlButtonsLayout)
         filelistLayout.addWidget(self.fileListView)
-
-        # 标注数据统计面板 (当前图片统计 + 全部文件统计)
-        self.statsWidget = QFrame()
-        self.statsWidget.setObjectName("statsWidget")
-        self.statsWidget.setStyleSheet("""
-            QFrame#statsWidget {
-                background-color: #F8FAFC;
-                border-top: 1px solid #CBD5E1;
-                border-radius: 4px;
-                margin-top: 4px;
-            }
-            QLabel#statsTitle {
-                font-size: 11px;
-                font-weight: bold;
-                color: #475569;
-            }
-            QLabel#statsHighlight {
-                font-size: 12px;
-                font-weight: bold;
-                color: #2563EB;
-            }
-            QLabel#statsContent {
-                font-size: 11px;
-                color: #334155;
-            }
-        """)
-        stats_layout = QVBoxLayout(self.statsWidget)
-        stats_layout.setContentsMargins(8, 6, 8, 6)
-        stats_layout.setSpacing(4)
-
-        # 1. 当前图片标注统计
-        row_cur = QHBoxLayout()
-        lbl_cur_t = QLabel("📊 当前图片:")
-        lbl_cur_t.setObjectName("statsTitle")
-        self.lbl_cur_stats = QLabel("未载入图片")
-        self.lbl_cur_stats.setObjectName("statsHighlight")
-        row_cur.addWidget(lbl_cur_t)
-        row_cur.addWidget(self.lbl_cur_stats, stretch=1)
-        stats_layout.addLayout(row_cur)
-
-        self.lbl_cur_details = QLabel("—")
-        self.lbl_cur_details.setObjectName("statsContent")
-        self.lbl_cur_details.setWordWrap(True)
-        stats_layout.addWidget(self.lbl_cur_details)
-
-        # 分割线
-        div_line = QFrame()
-        div_line.setFrameShape(QFrame.HLine)
-        div_line.setFrameShadow(QFrame.Sunken)
-        div_line.setStyleSheet("color: #E2E8F0; max-height: 1px;")
-        stats_layout.addWidget(div_line)
-
-        # 2. 全部文件标注统计
-        row_all = QHBoxLayout()
-        lbl_all_t = QLabel("📁 全部文件:")
-        lbl_all_t.setObjectName("statsTitle")
-        self.lbl_all_stats = QLabel("0 / 0 张已标 (0 个目标)")
-        self.lbl_all_stats.setObjectName("statsHighlight")
-        row_all.addWidget(lbl_all_t)
-        row_all.addWidget(self.lbl_all_stats, stretch=1)
-        stats_layout.addLayout(row_all)
-
-        self.lbl_all_details = QLabel("—")
-        self.lbl_all_details.setObjectName("statsContent")
-        self.lbl_all_details.setWordWrap(True)
-        stats_layout.addWidget(self.lbl_all_details)
-
-        filelistLayout.addWidget(self.statsWidget)
 
         fileListContainer = QWidget()
         fileListContainer.setLayout(filelistLayout)
@@ -274,6 +224,12 @@ class MainWindow(QMainWindow, WindowMixin):
         self.filedock = QDockWidget(u'File List', self)
         self.filedock.setObjectName(u'Files')
         self.filedock.setWidget(fileListContainer)
+
+        # 统计数据缓存与追踪 (支持项目已有标签及每次打开新增计数)
+        self._baseline_box_counts = {}
+        self._session_added_map = {}
+        self._xml_stats_cache = {}
+
 
 
         self.zoomWidget = ZoomWidget()
@@ -1805,88 +1761,69 @@ class MainWindow(QMainWindow, WindowMixin):
             self.saveFile()
 
     def update_stats(self):
-        """实时更新右下角 File List 底部的标注数据统计看板"""
-        if not hasattr(self, 'lbl_cur_stats') or not hasattr(self, 'lbl_all_stats'):
+        """实时更新右下角 File List 上方控制栏的数字统计"""
+        if not hasattr(self, 'lbl_session_count') or not hasattr(self, 'lbl_total_count'):
             return
 
-        # 1. 当前打开图片的标注框统计
+        # 1. 追踪当前打开图片的新增差值（支持已有标签项目）
         if hasattr(self, 'canvas') and getattr(self, 'filePath', None) and os.path.exists(self.filePath):
             cur_shapes = getattr(self.canvas, 'shapes', []) or []
-            cnt = len(cur_shapes)
-            self.lbl_cur_stats.setText(f"共 {cnt} 个标注框")
-            cls_map = {}
-            for s in cur_shapes:
-                lbl = s.label or "未命名"
-                cls_map[lbl] = cls_map.get(lbl, 0) + 1
-            if cls_map:
-                details = " | ".join(f"{k}: {v}" for k, v in sorted(cls_map.items(), key=lambda x: x[1], reverse=True))
-                self.lbl_cur_details.setText(details)
-                self.lbl_cur_details.setToolTip(f"当前图片类别分布:\n" + "\n".join(f"{k}: {v} 个" for k, v in sorted(cls_map.items(), key=lambda x: x[1], reverse=True)))
-            else:
-                self.lbl_cur_details.setText("暂无标注框 (未标注 / 负样本)")
-                self.lbl_cur_details.setToolTip("")
-        else:
-            self.lbl_cur_stats.setText("未载入图片")
-            self.lbl_cur_details.setText("—")
-            self.lbl_cur_details.setToolTip("")
+            cur_count = len(cur_shapes)
+            if self.filePath not in self._baseline_box_counts:
+                # 建立打开此图时的初始基准标签数（包括原本已有标签）
+                stem = os.path.splitext(os.path.basename(self.filePath))[0]
+                save_dir = getattr(self, 'defaultSaveDir', "") or (getattr(self, 'dirpath', "") or "")
+                xml_path = os.path.join(save_dir, f"{stem}.xml") if save_dir else os.path.join(os.path.dirname(self.filePath), f"{stem}.xml")
+                initial_cnt = cur_count
+                if os.path.exists(xml_path):
+                    try:
+                        tree = ET.parse(xml_path)
+                        initial_cnt = len(tree.getroot().findall("object"))
+                    except Exception:
+                        pass
+                self._baseline_box_counts[self.filePath] = initial_cnt
 
-        # 2. 全部文件列表的标注框与文件统计
+            baseline = self._baseline_box_counts.get(self.filePath, 0)
+            self._session_added_map[self.filePath] = max(0, cur_count - baseline)
+
+        # 本次打开工具以来累计新增的所有标签数
+        total_session_added = sum(self._session_added_map.values()) if hasattr(self, '_session_added_map') else 0
+        self.lbl_session_count.setText(f"本次: +{total_session_added}")
+        self.lbl_session_count.setToolTip(f"本次打开工具期间累计新增标签框: {total_session_added} 个")
+
+        # 2. 统计当前项目/文件夹所有已有标签总数
         imglist = getattr(self.fileModel, 'imgList', []) or []
         if not imglist:
-            self.lbl_all_stats.setText("0 / 0 张已标 (0 个目标)")
-            self.lbl_all_details.setText("—")
-            self.lbl_all_details.setToolTip("")
+            self.lbl_total_count.setText("总计: 0")
+            self.lbl_total_count.setToolTip("当前项目暂无图片")
             return
 
-        total_images = len(imglist)
+        total_boxes = 0
         save_dir = getattr(self, 'defaultSaveDir', "") or (getattr(self, 'dirpath', "") or "")
 
-        if not hasattr(self, '_xml_stats_cache'):
-            self._xml_stats_cache = {}  # xml_path: (mtime, count, dict_classes)
-
-        total_boxes = 0
-        labeled_images = 0
-        all_cls_map = {}
-
         for img_path in imglist:
-            stem = os.path.splitext(os.path.basename(img_path))[0]
-            xml_path = os.path.join(save_dir, f"{stem}.xml") if save_dir else os.path.join(os.path.dirname(img_path), f"{stem}.xml")
-            if os.path.exists(xml_path):
-                labeled_images += 1
-                try:
-                    mtime = os.path.getmtime(xml_path)
-                    cached = self._xml_stats_cache.get(xml_path)
-                    if cached and cached[0] == mtime:
-                        b_cnt, b_map = cached[1], cached[2]
-                    else:
-                        tree = ET.parse(xml_path)
-                        objs = tree.getroot().findall("object")
-                        b_cnt = len(objs)
-                        b_map = {}
-                        for o in objs:
-                            n = o.findtext("name", "未命名")
-                            b_map[n] = b_map.get(n, 0) + 1
-                        self._xml_stats_cache[xml_path] = (mtime, b_cnt, b_map)
+            if getattr(self, 'filePath', None) and img_path == self.filePath and hasattr(self, 'canvas'):
+                total_boxes += len(self.canvas.shapes)
+            else:
+                stem = os.path.splitext(os.path.basename(img_path))[0]
+                xml_path = os.path.join(save_dir, f"{stem}.xml") if save_dir else os.path.join(os.path.dirname(img_path), f"{stem}.xml")
+                if os.path.exists(xml_path):
+                    try:
+                        mtime = os.path.getmtime(xml_path)
+                        cached = self._xml_stats_cache.get(xml_path)
+                        if cached and cached[0] == mtime:
+                            b_cnt = cached[1]
+                        else:
+                            tree = ET.parse(xml_path)
+                            b_cnt = len(tree.getroot().findall("object"))
+                            self._xml_stats_cache[xml_path] = (mtime, b_cnt)
+                        total_boxes += b_cnt
+                    except Exception:
+                        pass
 
-                    total_boxes += b_cnt
-                    for k, v in b_map.items():
-                        all_cls_map[k] = all_cls_map.get(k, 0) + v
-                except Exception:
-                    pass
+        self.lbl_total_count.setText(f"总计: {total_boxes}")
+        self.lbl_total_count.setToolTip(f"当前项目所有已有标签框总数: {total_boxes} 个 (共 {len(imglist)} 张图片)")
 
-        pct = (labeled_images / total_images * 100.0) if total_images > 0 else 0.0
-        self.lbl_all_stats.setText(f"{labeled_images}/{total_images} 张已标 ({pct:.1f}%) | 共 {total_boxes} 个目标")
-        if all_cls_map:
-            top_classes = sorted(all_cls_map.items(), key=lambda x: x[1], reverse=True)
-            details_str = " | ".join(f"{k}: {v}" for k, v in top_classes[:5])
-            if len(top_classes) > 5:
-                details_str += f" 等共 {len(top_classes)} 类..."
-            self.lbl_all_details.setText(details_str)
-            full_str = "\n".join(f"{k}: {v} 个" for k, v in top_classes)
-            self.lbl_all_details.setToolTip(f"全部标签分布详情 (共 {total_boxes} 个目标):\n{full_str}")
-        else:
-            self.lbl_all_details.setText("暂无已保存的标注文件")
-            self.lbl_all_details.setToolTip("")
 
 
     def openPrevImg(self, _value=False):
