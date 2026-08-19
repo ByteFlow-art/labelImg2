@@ -1,5 +1,4 @@
 @echo off
-chcp 65001 >nul
 setlocal enabledelayedexpansion
 
 set "SCRIPT_DIR=%~dp0"
@@ -9,13 +8,13 @@ title LabelImg2
 set "APP_FILE=labelImg.py"
 
 if not exist "%SCRIPT_DIR%%APP_FILE%" (
-    echo [错误] 未在当前目录下找到主程序文件: %APP_FILE%
-    echo 脚本所在路径: %SCRIPT_DIR%
+    echo [ERROR] Cannot find main application file: %APP_FILE%
+    echo Script Directory: %SCRIPT_DIR%
     pause
     exit /b 1
 )
 
-:: 1. 优先检测项目本地虚拟环境 (.venv)
+REM 1. Check local virtual environment (.venv)
 if exist "%SCRIPT_DIR%.venv\Scripts\python.exe" (
     "%SCRIPT_DIR%.venv\Scripts\python.exe" -c "import PyQt5" >nul 2>&1
     if not errorlevel 1 (
@@ -24,7 +23,7 @@ if exist "%SCRIPT_DIR%.venv\Scripts\python.exe" (
     )
 )
 
-:: 2. 检测本地便携式 Python 环境 (python_embed)
+REM 2. Check local embedded Python (python_embed)
 if exist "%SCRIPT_DIR%python_embed\python.exe" (
     "%SCRIPT_DIR%python_embed\python.exe" -c "import PyQt5" >nul 2>&1
     if not errorlevel 1 (
@@ -33,9 +32,10 @@ if exist "%SCRIPT_DIR%python_embed\python.exe" (
     )
 )
 
-:: 3. 检测常见 Conda 管理器与 labelimg2 虚拟环境
+REM 3. Check Conda activate scripts and labelimg2 environment
 set "CONDA_ACTIVATE="
 for %%P in (
+    "C:\D\Conda\miniconda3\Scripts\activate.bat"
     "%USERPROFILE%\miniconda3\Scripts\activate.bat"
     "%USERPROFILE%\anaconda3\Scripts\activate.bat"
     "C:\ProgramData\miniconda3\Scripts\activate.bat"
@@ -44,7 +44,6 @@ for %%P in (
     "C:\Anaconda3\Scripts\activate.bat"
     "D:\Anaconda3\Scripts\activate.bat"
     "D:\miniconda3\Scripts\activate.bat"
-    "C:\D\Conda\miniconda3\Scripts\activate.bat"
 ) do (
     if not defined CONDA_ACTIVATE if exist "%%~P" set "CONDA_ACTIVATE=%%~P"
 )
@@ -66,7 +65,7 @@ if defined CONDA_ACTIVATE (
     )
 )
 
-:: 4. 检测系统全局 Python 环境
+REM 4. Check system Python with PyQt5
 for /f "delims=" %%I in ('where python.exe 2^>nul') do (
     "%%~fI" -c "import PyQt5" >nul 2>&1
     if not errorlevel 1 (
@@ -75,9 +74,9 @@ for /f "delims=" %%I in ('where python.exe 2^>nul') do (
     )
 )
 
-:: 5. 首次启动或未配置环境：自动调用环境初始化向导
+REM 5. Auto setup environment on first run if setup_env.bat exists
 echo ==============================================================================
-echo                 LabelImg2 首次启动 - 正在自动配置运行环境
+echo                 LabelImg2 - Auto Initializing Environment
 echo ==============================================================================
 echo.
 if exist "%SCRIPT_DIR%setup_env.bat" (
@@ -87,7 +86,7 @@ if exist "%SCRIPT_DIR%setup_env.bat" (
         exit /b 0
     )
 ) else (
-    echo [错误] 缺失环境配置文件 setup_env.bat，请确保项目文件完整。
+    echo [ERROR] setup_env.bat not found. Please check repository integrity.
     pause
 )
 
