@@ -36,6 +36,7 @@ from libs.cvtlabels2yolo import cvt_lbidata_rotdet
 
 from ui.train_dialog import TrainDialog
 from ui.auto_annotate_dialog import AutoAnnotateDialog
+from utils.folder_sort_sync import sort_images_by_folder_order, natural_sort_key
 
 __appname__ = 'labelImg2'
 
@@ -558,6 +559,12 @@ class MainWindow(QMainWindow, WindowMixin):
         
         # 捕获全局按键事件，确保 Q 与 Delete 完全一致且不被多重 QShortcut 冲突屏蔽
         QApplication.instance().installEventFilter(self)
+
+        # 实时动态检测并同步 Windows 资源管理器文件夹排序变更
+        self.folder_sort_timer = QTimer(self)
+        self.folder_sort_timer.setInterval(800)
+        self.folder_sort_timer.timeout.connect(self.check_folder_sort_update)
+        self.folder_sort_timer.start()
 
     def noShapes(self):
         return not self.ItemShapeDict
@@ -1645,7 +1652,7 @@ class MainWindow(QMainWindow, WindowMixin):
         if not self.mayContinue():
             event.ignore()
         settings = self.settings
-        
+
         save_dir = self.defaultSaveDir if (self.defaultSaveDir and os.path.exists(self.defaultSaveDir)) else ""
         cur_dir = self.dirname or self.dirpath or self.lastOpenDir
         if not cur_dir or not os.path.exists(cur_dir):
@@ -1667,12 +1674,22 @@ class MainWindow(QMainWindow, WindowMixin):
         settings[SETTING_AUTO_SAVE] = self.autoSaving.isChecked()
         settings[SETTING_DRAW_CORNER] = self.drawCorner.isChecked()
         settings[SETTING_PAINT_LABEL] = self.paintLabelsOption.isChecked()
+        if hasattr(self, 'combo_file_sort'):
+            settings['file_sort_mode'] = self.combo_file_sort.currentIndex()
         settings.save()
     ## User Dialogs ##
 
     def loadRecent(self, filename):
         if self.mayContinue():
             self.loadFile(filename)
+
+    @staticmethod
+    def natural_sort_key(path_str):
+        """标准操作系统自然排序键 (数值递增、字母不区分大小写，与 Windows 文件夹完全一致)"""
+        filename = os.path.basename(path_str)
+        parts = [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', filename)]
+        dir_part = os.path.dirname(path_str).lower()
+        return (dir_part, parts)
 
     def scanAllImages(self, folderPath):
         extensions = ['.%s' % fmt.data().decode("ascii").lower() for fmt in QImageReader.supportedImageFormats()]
@@ -1684,13 +1701,29 @@ class MainWindow(QMainWindow, WindowMixin):
                     relativePath = os.path.join(root, file)
                     path = os.path.abspath(relativePath)
                     images.append(path)
-        collator = QCollator()
-        locale = QLocale(QLocale.Chinese)
-        collator.setLocale(locale)
-        def sort_key(s):
-            return collator.sortKey(s)
-        sorted_images = sorted(images, key=sort_key)
+
+        sorted_images = sort_images_by_folder_order(images, folderPath)
         return sorted_images
+
+    def forceRefreshCurrentDir(self):
+        """强制重新扫描当前图片目录并按系统所选文件夹实时排序规则立即更新列表"""
+        if not hasattr(self, 'dirname') or not self.dirname or not os.path.exists(self.dirname):
+            return
+        imglist = self.scanAllImages(self.dirname)
+        cur_file = self.filePath
+        self.fileModel.setStringList(imglist, self.dirname, self.defaultSaveDir)
+        if cur_file and cur_file in imglist:
+            row = imglist.index(cur_file)
+            idx = self.fileModel.index(row)
+            self.filesm.blockSignals(True)
+            self.filesm.setCurrentIndex(idx, QItemSelectionModel.ClearAndSelect)
+            self.filesm.blockSignals(False)
+            self.fileListView.scrollTo(idx)
+            self.statFile.setText(f'{row + 1}/{len(imglist)}')
+        elif imglist:
+            self.loadFile(imglist[0])
+        self.fileListView.viewport().update()
+        self.update_stats()
 
     def changeSavedirDialog(self, _value=False):
         log_terminal("[Shortcut Ctrl+R Terminal] 触发修改标注保存路径窗口")
@@ -1705,30 +1738,21 @@ class MainWindow(QMainWindow, WindowMixin):
             self.settings[SETTING_SAVE_DIR] = dirpath
             self.settings['last_save_dir'] = dirpath
             self.settings.save()
-
-        if hasattr(self, 'dirname') and self.dirname and os.path.exists(self.dirname):
-            imglist = self.scanAllImages(self.dirname)
-            self.fileModel.setStringList(imglist, self.dirname, self.defaultSaveDir)
-            self.calculate_initial_stats()
-
-        self.statusBar().showMessage('%s . Annotation will be saved to %s' %
-                                     ('Change saved folder', self.defaultSaveDir or ''))
-        self.statusBar().show()
+            self.statusBar().showMessage('%s . Annotation will be saved to %s' %
+                                         ('Change saved folder', self.defaultSaveDir))
+            self.statusBar().show()
 
     def openAnnotationDialog(self, _value=False):
         if self.filePath is None:
-            self.statusBar().showMessage('Please select image first')
-            self.statusBar().show()
+            self.errorMessage(u'Image not loaded', u'Open image first, then load the annotation file.')
             return
 
-        path = self.defaultSaveDir if (self.defaultSaveDir and os.path.exists(self.defaultSaveDir)) else (self.dirname if (self.dirname and os.path.exists(self.dirname)) else (os.path.dirname(self.filePath) if self.filePath else '.'))
-        filters = "Open Annotation XML file (%s)" % ' '.join(['*.xml'])
-        filename = QFileDialog.getOpenFileName(self,'%s - Choose a xml file' % __appname__, path, filters)
-        if filename:
-            if isinstance(filename, (tuple, list)):
-                filename = filename[0]
-            if filename and os.path.exists(filename):
-                self.loadPascalXMLByFilename(filename)
+        path = self.defaultSaveDir if (self.defaultSaveDir and os.path.exists(self.defaultSaveDir)) else (self.dirname if (self.dirname and os.path.exists(self.dirname)) else '.')
+        targetFilePath = QFileDialog.getOpenFileName(self,
+                                                    '%s - Choose Annotation file' % __appname__,
+                                                    path,  'Pascal XML (*.xml)')
+        if targetFilePath is not None and len(targetFilePath[0]) > 0 and os.path.exists(targetFilePath[0]):
+            self.loadPascalXMLByFilename(targetFilePath[0])
 
     def openDirDialog(self, _value=False, dirpath=None):
         if not self.mayContinue():
@@ -1745,17 +1769,35 @@ class MainWindow(QMainWindow, WindowMixin):
             self.settings.save()
             self.importDirImages(targetDirPath)
 
+    def check_folder_sort_update(self):
+        """实时检测所选文件夹在 Windows 资源管理器中的排序是否被用户调整，如有变动即刻自动重新排序刷新"""
+        if not hasattr(self, 'dirname') or not self.dirname or not os.path.exists(self.dirname):
+            return
+        from utils.folder_sort_sync import get_live_explorer_sort_columns
+        cur_sort = get_live_explorer_sort_columns(self.dirname)
+        if not hasattr(self, '_last_detected_explorer_sort'):
+            self._last_detected_explorer_sort = cur_sort
+            return
+        if cur_sort != self._last_detected_explorer_sort:
+            self._last_detected_explorer_sort = cur_sort
+            self.refreshCurrentDir(force=True)
+
+    def changeEvent(self, e):
+        if e.type() == QEvent.ActivationChange and self.isActiveWindow():
+            self.check_folder_sort_update()
+        super(MainWindow, self).changeEvent(e)
+
     def on_directory_changed(self, path):
         # 延迟 150ms 刷新，避免外部写文件锁冲突
         QTimer.singleShot(150, self.refreshCurrentDir)
 
-    def refreshCurrentDir(self):
-        """外部图片增删时，自动重新扫描并刷新列表（仅在图片列表实际变化时刷新，避免保存 XML 引起的重复重载与卡顿）"""
+    def refreshCurrentDir(self, force=False):
+        """外部图片增删或系统文件夹排序变更时，自动重新扫描并刷新列表"""
         if not hasattr(self, 'dirname') or not self.dirname or not os.path.exists(self.dirname):
             return
         imglist = self.scanAllImages(self.dirname)
         old_list = self.fileModel.stringList() if hasattr(self, 'fileModel') and self.fileModel else []
-        if imglist == old_list:
+        if not force and imglist == old_list:
             return
         cur_file = self.filePath
         self.fileModel.setStringList(imglist, self.dirname, self.defaultSaveDir)
@@ -2405,15 +2447,45 @@ class MainWindow(QMainWindow, WindowMixin):
         self.canvas.endMove(copy=False)
         self.setDirty()
 
-    def loadPredefinedClasses(self, predefClassesFile):
-        if predefClassesFile and os.path.exists(predefClassesFile):
-            with codecs.open(predefClassesFile, 'r', 'utf8') as f:
+    def loadPredefinedClasses(self, predefClassesFile=None):
+        if not hasattr(self, 'labelHist') or self.labelHist is None:
+            self.labelHist = []
+
+        candidates = []
+        if predefClassesFile and isinstance(predefClassesFile, str):
+            candidates.append(predefClassesFile)
+
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        candidates.append(os.path.join(base_dir, "data", "predefined_classes.txt"))
+        candidates.append(os.path.join(os.getcwd(), "data", "predefined_classes.txt"))
+        if hasattr(sys, '_MEIPASS'):
+            candidates.append(os.path.join(sys._MEIPASS, "data", "predefined_classes.txt"))
+
+        found_path = None
+        for p in candidates:
+            if p and os.path.exists(p) and os.path.isfile(p):
+                found_path = p
+                break
+
+        if found_path:
+            with codecs.open(found_path, 'r', 'utf8') as f:
                 for line in f:
                     line = line.strip()
-                    if self.labelHist is None:
-                        self.labelHist = [line]
-                    else:
+                    if line and line not in self.labelHist:
                         self.labelHist.append(line)
+
+        # 同时从历史设置中加载自定义新增的标签
+        if hasattr(self, 'settings') and self.settings:
+            saved_hist = self.settings.get('label_history', [])
+            if saved_hist:
+                for lab in saved_hist:
+                    if lab and lab not in self.labelHist:
+                        self.labelHist.append(lab)
+
+        if hasattr(self, 'labelDialog') and self.labelDialog:
+            self.labelDialog.updateListItems(self.labelHist)
+        if hasattr(self, 'labelList') and self.labelList:
+            self.labelList.updateLabelList(self.labelHist)
 
     def loadPascalXMLByFilename(self, xmlPath):
         if self.filePath is None:
