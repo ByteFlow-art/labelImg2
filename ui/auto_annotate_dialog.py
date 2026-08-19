@@ -2,6 +2,7 @@ import os
 import time
 from typing import Optional, List, Dict, Any
 from core.qt_compat import *
+from core.safe_widgets import SafeComboBox, SafeSlider, SafeDoubleSpinBox
 from core.yolo_annotator import YOLOAnnotator
 from core.xml_handler import XMLHandler
 from utils.worker_thread import BatchAnnotationThread
@@ -54,12 +55,12 @@ class AutoAnnotateDialog(QDialog):
         self.save_format = "Pascal VOC XML (*.xml)"
 
         self.init_ui()
+        self.restore_settings()
         self.sync_paths_from_main_window()
 
     def get_icon(self, icon_name: str) -> QIcon:
         from libs.lib import newIcon
         return newIcon(icon_name)
-
 
     def create_section_header(self, title_text: str) -> QLabel:
         lbl = QLabel(title_text)
@@ -83,15 +84,13 @@ class AutoAnnotateDialog(QDialog):
         m_layout = QVBoxLayout()
         m_layout.setSpacing(10)
 
-
-
         m_box = QHBoxLayout()
         lbl_m = QLabel("模型权重:")
         lbl_m.setMinimumWidth(100)
         lbl_m.setStyleSheet("font-size: 13px; font-weight: bold;")
         m_box.addWidget(lbl_m)
 
-        self.combo_models = QComboBox()
+        self.combo_models = SafeComboBox()
         self.combo_models.setStyleSheet("font-size: 13px; padding: 4px;")
         self.refresh_model_selector()
         self.combo_models.currentIndexChanged.connect(self.on_model_selected)
@@ -130,16 +129,22 @@ class AutoAnnotateDialog(QDialog):
         lbl_c.setStyleSheet("font-size: 13px; font-weight: bold;")
         conf_box.addWidget(lbl_c)
 
-        self.lbl_conf = QLabel("0.25")
-        self.lbl_conf.setMinimumWidth(45)
-        self.lbl_conf.setStyleSheet("font-weight: bold; font-size: 13px; color: #2563EB;")
-        
-        self.slider_conf = QSlider(Qt.Horizontal)
+        self.spin_conf = SafeDoubleSpinBox()
+        self.spin_conf.setRange(0.01, 1.00)
+        self.spin_conf.setSingleStep(0.01)
+        self.spin_conf.setValue(0.25)
+        self.spin_conf.setDecimals(2)
+        self.spin_conf.setFixedWidth(70)
+        self.spin_conf.setStyleSheet("font-size: 13px; font-weight: bold; color: #2563EB;")
+
+        self.slider_conf = SafeSlider(Qt.Horizontal)
         self.slider_conf.setRange(1, 100)
         self.slider_conf.setValue(25)
-        self.slider_conf.valueChanged.connect(lambda v: self.lbl_conf.setText(f"{v/100.0:.2f}"))
+
+        self.slider_conf.valueChanged.connect(lambda v: self.spin_conf.setValue(v / 100.0))
+        self.spin_conf.valueChanged.connect(lambda v: self.slider_conf.setValue(int(round(v * 100))))
         conf_box.addWidget(self.slider_conf)
-        conf_box.addWidget(self.lbl_conf)
+        conf_box.addWidget(self.spin_conf)
         t_layout.addLayout(conf_box)
 
         # IoU
@@ -149,16 +154,22 @@ class AutoAnnotateDialog(QDialog):
         lbl_i.setStyleSheet("font-size: 13px; font-weight: bold;")
         iou_box.addWidget(lbl_i)
 
-        self.lbl_iou = QLabel("0.45")
-        self.lbl_iou.setMinimumWidth(45)
-        self.lbl_iou.setStyleSheet("font-weight: bold; font-size: 13px; color: #2563EB;")
+        self.spin_iou = SafeDoubleSpinBox()
+        self.spin_iou.setRange(0.01, 1.00)
+        self.spin_iou.setSingleStep(0.01)
+        self.spin_iou.setValue(0.45)
+        self.spin_iou.setDecimals(2)
+        self.spin_iou.setFixedWidth(70)
+        self.spin_iou.setStyleSheet("font-size: 13px; font-weight: bold; color: #2563EB;")
 
-        self.slider_iou = QSlider(Qt.Horizontal)
+        self.slider_iou = SafeSlider(Qt.Horizontal)
         self.slider_iou.setRange(1, 100)
         self.slider_iou.setValue(45)
-        self.slider_iou.valueChanged.connect(lambda v: self.lbl_iou.setText(f"{v/100.0:.2f}"))
+
+        self.slider_iou.valueChanged.connect(lambda v: self.spin_iou.setValue(v / 100.0))
+        self.spin_iou.valueChanged.connect(lambda v: self.slider_iou.setValue(int(round(v * 100))))
         iou_box.addWidget(self.slider_iou)
-        iou_box.addWidget(self.lbl_iou)
+        iou_box.addWidget(self.spin_iou)
         t_layout.addLayout(iou_box)
 
         # imgsz & device
@@ -170,7 +181,7 @@ class AutoAnnotateDialog(QDialog):
         lbl_sz.setStyleSheet("font-size: 13px; font-weight: bold;")
         param_grid.addWidget(lbl_sz, 0, 0)
 
-        self.combo_imgsz = QComboBox()
+        self.combo_imgsz = SafeComboBox()
         self.combo_imgsz.addItems(["640 x 640 (推荐)", "320 x 320 (快速)", "1280 x 1280 (高清)"])
         self.combo_imgsz.setStyleSheet("font-size: 13px; padding: 3px;")
         param_grid.addWidget(self.combo_imgsz, 0, 1)
@@ -179,7 +190,7 @@ class AutoAnnotateDialog(QDialog):
         lbl_dev.setStyleSheet("font-size: 13px; font-weight: bold;")
         param_grid.addWidget(lbl_dev, 0, 2)
 
-        self.combo_device = QComboBox()
+        self.combo_device = SafeComboBox()
         self.combo_device.addItems(["Auto (CUDA / GPU)", "CPU Mode"])
         self.combo_device.setStyleSheet("font-size: 13px; padding: 3px;")
         param_grid.addWidget(self.combo_device, 0, 3)
@@ -229,8 +240,6 @@ class AutoAnnotateDialog(QDialog):
 
         layout.addLayout(cls_layout)
 
-
-
         # 4. 自动标注应用模式设置 (覆盖原标签 vs 追加合并)
         layout.addWidget(self.create_section_header("4. 自动标注应用模式设置"))
         mode_box = QHBoxLayout()
@@ -239,11 +248,21 @@ class AutoAnnotateDialog(QDialog):
         lbl_mode.setStyleSheet("font-size: 13px; font-weight: bold;")
         mode_box.addWidget(lbl_mode)
 
+        rb_style = """
+        QRadioButton {
+            font-size: 13px;
+            font-weight: bold;
+            color: #1E293B;
+        }
+        QRadioButton:checked {
+            color: #2563EB;
+        }
+        """
         self.rb_mode_overwrite = QRadioButton("完全覆盖模式")
         self.rb_mode_append = QRadioButton("追加合并模式")
+        self.rb_mode_overwrite.setStyleSheet(rb_style)
+        self.rb_mode_append.setStyleSheet(rb_style)
         self.rb_mode_overwrite.setChecked(True)
-        self.rb_mode_overwrite.setStyleSheet("font-size: 13px; font-weight: bold; color: #1E293B;")
-        self.rb_mode_append.setStyleSheet("font-size: 13px; font-weight: bold; color: #2563EB;")
 
         self.mode_group = QButtonGroup(self)
         self.mode_group.addButton(self.rb_mode_overwrite, 1)
@@ -254,7 +273,6 @@ class AutoAnnotateDialog(QDialog):
         mode_box.addStretch()
         layout.addLayout(mode_box)
 
-
         # 5. 自动批注保存文件格式类型选项
         layout.addWidget(self.create_section_header("5. 标注保存文件格式类型设置"))
         fmt_box = QHBoxLayout()
@@ -263,7 +281,7 @@ class AutoAnnotateDialog(QDialog):
         lbl_fmt.setStyleSheet("font-size: 13px; font-weight: bold;")
         fmt_box.addWidget(lbl_fmt)
 
-        self.combo_save_format = QComboBox()
+        self.combo_save_format = SafeComboBox()
         self.combo_save_format.addItems([
             "Pascal VOC XML (*.xml)",
             "YOLO TXT (*.txt)",
@@ -275,19 +293,16 @@ class AutoAnnotateDialog(QDialog):
         fmt_box.addWidget(self.combo_save_format, stretch=1)
         layout.addLayout(fmt_box)
 
-
-        # 6. 进度条与控制台状态
+        # 6. 进度条 (仅批量任务时显示)
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
         self.progress_bar.setStyleSheet("height: 18px;")
+        self.progress_bar.setVisible(False)
         layout.addWidget(self.progress_bar)
-
-        self.lbl_status = QLabel("状态: YOLO 模型中心已就绪")
-        self.lbl_status.setStyleSheet("font-size: 13px; color: #0F172A; font-weight: bold; background: #F1F5F9; padding: 6px; border-radius: 4px;")
-        layout.addWidget(self.lbl_status)
 
         scroll_area.setWidget(container)
         main_layout.addWidget(scroll_area)
+
 
         # 默认加载初始模型
         self.on_model_selected(0)
@@ -615,6 +630,62 @@ class AutoAnnotateDialog(QDialog):
         scanned_images.sort()
         return scanned_images
 
+    def save_settings(self):
+        """保存当前模型中心的所有参数真实状态"""
+        try:
+            settings = QSettings("ByteFlow", "LabelImg2")
+            settings.setValue("model_center/conf", int(self.slider_conf.value()))
+            settings.setValue("model_center/iou", int(self.slider_iou.value()))
+            settings.setValue("model_center/imgsz_idx", int(self.combo_imgsz.currentIndex()))
+            settings.setValue("model_center/device_idx", int(self.combo_device.currentIndex()))
+            settings.setValue("model_center/mode", 2 if (hasattr(self, 'rb_mode_append') and self.rb_mode_append.isChecked()) else 1)
+            settings.setValue("model_center/save_format_idx", int(self.combo_save_format.currentIndex()))
+            if self.annotator and self.annotator.model_path:
+                settings.setValue("model_center/last_model_path", str(self.annotator.model_path))
+        except Exception:
+            pass
+
+    def restore_settings(self):
+        """还原上次关闭前的真实参数状态"""
+        try:
+            settings = QSettings("ByteFlow", "LabelImg2")
+            conf_val = settings.value("model_center/conf", 25, type=int)
+            iou_val = settings.value("model_center/iou", 45, type=int)
+            self.slider_conf.setValue(conf_val)
+            self.slider_iou.setValue(iou_val)
+
+            imgsz_idx = settings.value("model_center/imgsz_idx", 0, type=int)
+            if 0 <= imgsz_idx < self.combo_imgsz.count():
+                self.combo_imgsz.setCurrentIndex(imgsz_idx)
+
+            dev_idx = settings.value("model_center/device_idx", 0, type=int)
+            if 0 <= dev_idx < self.combo_device.count():
+                self.combo_device.setCurrentIndex(dev_idx)
+
+            mode_val = settings.value("model_center/mode", 1, type=int)
+            if mode_val == 2 and hasattr(self, 'rb_mode_append'):
+                self.rb_mode_append.setChecked(True)
+            elif hasattr(self, 'rb_mode_overwrite'):
+                self.rb_mode_overwrite.setChecked(True)
+
+            fmt_idx = settings.value("model_center/save_format_idx", 0, type=int)
+            if 0 <= fmt_idx < self.combo_save_format.count():
+                self.combo_save_format.setCurrentIndex(fmt_idx)
+
+            last_pt = settings.value("model_center/last_model_path", "", type=str)
+            if last_pt and os.path.exists(last_pt):
+                self.load_model(last_pt)
+        except Exception:
+            pass
+
+    def closeEvent(self, event):
+        self.save_settings()
+        super().closeEvent(event)
+
+    def hideEvent(self, event):
+        self.save_settings()
+        super().hideEvent(event)
+
     # 供主界面【单图自动批注】快捷动作调用的底层接口
     def auto_annotate_single_image(self):
         if not self.annotator.model:
@@ -650,13 +721,12 @@ class AutoAnnotateDialog(QDialog):
             reply = QMessageBox.question(
                 self,
                 "覆盖标注确认",
-                f"检测到标注文件 [{stem}.xml] 已存在！\n当前为【完全覆盖替换模式】，是否确定覆盖已有标注内容？\n\n(提示：若想保留原图已有标注，请在模型中心切换为【追加合并模式】)",
+                f"检测到标注文件 [{stem}.xml] 已存在！\n当前为【完全覆盖模式】，是否确定覆盖已有标注内容？\n\n(提示：若想保留原图已有标注，请在模型中心切换为【追加合并模式】)",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No if hasattr(QMessageBox, 'StandardButton') else QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.StandardButton.No if hasattr(QMessageBox, 'StandardButton') else QMessageBox.No
             )
             yes_val = QMessageBox.StandardButton.Yes if hasattr(QMessageBox, 'StandardButton') else QMessageBox.Yes
             if reply != yes_val:
-                self.lbl_status.setText("已取消自动标注 (保留原有标注)")
                 return
 
         conf = self.slider_conf.value() / 100.0
@@ -670,22 +740,93 @@ class AutoAnnotateDialog(QDialog):
                 iou_threshold=iou
             )
 
-            XMLHandler.save_pascal_voc_xml(
-                image_path=img_path,
-                objects=boxes,
-                output_xml_path=xml_path,
-                class_mapping=mapping,
-                overwrite=overwrite_mode
-            )
+            if is_append:
+                # 1. 提取当前主界面画布上已存在的全部标注框 (保留旋转框、属性与颜色)
+                existing_shapes_info = []
+                if hasattr(self.main_window, 'canvas') and self.main_window.canvas.shapes:
+                    for s in self.main_window.canvas.shapes:
+                        pts = [(p.x(), p.y()) for p in s.points]
+                        line_c = s.line_color.getRgb() if s.line_color else None
+                        fill_c = s.fill_color.getRgb() if s.fill_color else None
+                        diff = getattr(s, 'difficult', False)
+                        is_rot = getattr(s, 'isRotated', False)
+                        direc = getattr(s, 'direction', 0)
+                        extra_lbl = getattr(s, 'extra_label', '')
+                        existing_shapes_info.append((s.label, pts, line_c, fill_c, diff, is_rot, direc, extra_lbl))
+                elif os.path.exists(xml_path):
+                    try:
+                        _, xml_objs = XMLHandler.read_pascal_voc_xml(xml_path)
+                        for obj in xml_objs:
+                            b = obj.get("bbox", [0, 0, 0, 0])
+                            pts = [(b[0], b[1]), (b[2], b[1]), (b[2], b[3]), (b[0], b[3])]
+                            existing_shapes_info.append((obj.get("class_name", ""), pts, None, None, False, False, 0, ''))
+                    except Exception:
+                        pass
 
-            if hasattr(self.main_window, 'defaultSaveDir'):
-                self.main_window.defaultSaveDir = save_dir
-            if hasattr(self.main_window, 'loadFile'):
-                self.main_window.loadFile(img_path)
+                # 计算 IoU 去重
+                def calc_iou(b1, b2):
+                    x1 = max(b1[0], b2[0])
+                    y1 = max(b1[1], b2[1])
+                    x2 = min(b1[2], b2[2])
+                    y2 = min(b1[3], b2[3])
+                    inter = max(0.0, x2 - x1) * max(0.0, y2 - y1)
+                    a1 = max(0.0, b1[2] - b1[0]) * max(0.0, b1[3] - b1[1])
+                    a2 = max(0.0, b2[2] - b2[0]) * max(0.0, b2[3] - b2[1])
+                    union = a1 + a2 - inter
+                    return inter / union if union > 0 else 0.0
 
-            mode_str = "追加模式 (保留原标注)" if is_append else "覆盖模式"
-            status_msg = f"单图自动批注完成 [{mode_str}]: 检测到 {len(boxes)} 个目标 -> {os.path.basename(xml_path)}"
-            self.lbl_status.setText(status_msg)
+                new_shapes_count = 0
+                for box in boxes:
+                    raw_name = box.get("class_name", "object")
+                    final_name = mapping.get(raw_name, raw_name)
+                    bbox = box.get("bbox", [0, 0, 0, 0])
+                    is_dup = False
+                    for s_info in existing_shapes_info:
+                        s_label = s_info[0]
+                        s_pts = s_info[1]
+                        if s_label == final_name and len(s_pts) >= 2:
+                            xs = [p[0] for p in s_pts]
+                            ys = [p[1] for p in s_pts]
+                            exist_bbox = [min(xs), min(ys), max(xs), max(ys)]
+                            if calc_iou(bbox, exist_bbox) > 0.85:
+                                is_dup = True
+                                break
+                    if not is_dup:
+                        new_pts = [(bbox[0], bbox[1]), (bbox[2], bbox[1]), (bbox[2], bbox[3]), (bbox[0], bbox[3])]
+                        existing_shapes_info.append((final_name, new_pts, None, None, False, False, 0, ''))
+                        new_shapes_count += 1
+
+                # 重新载入画布并更新标注
+                if hasattr(self.main_window, 'loadLabels'):
+                    self.main_window.loadLabels(existing_shapes_info)
+                    if hasattr(self.main_window, 'saveFile'):
+                        self.main_window.saveFile()
+                    elif hasattr(self.main_window, 'saveLabels'):
+                        self.main_window.saveLabels(xml_path)
+                    if hasattr(self.main_window, 'setDirty'):
+                        self.main_window.setDirty()
+
+                mode_str = "追加合并模式"
+                status_msg = f"单图自动批注完成 [{mode_str}]: 保留原有标注，新增 {new_shapes_count} 个新目标 -> {os.path.basename(xml_path)}"
+            else:
+                # 完全覆盖替换模式
+                XMLHandler.save_pascal_voc_xml(
+                    image_path=img_path,
+                    objects=boxes,
+                    output_xml_path=xml_path,
+                    class_mapping=mapping,
+                    overwrite=True
+                )
+                if hasattr(self.main_window, 'defaultSaveDir'):
+                    self.main_window.defaultSaveDir = save_dir
+                if hasattr(self.main_window, 'loadFile'):
+                    self.main_window.loadFile(img_path)
+
+                mode_str = "完全覆盖模式"
+                status_msg = f"单图自动批注完成 [{mode_str}]: 替换为 {len(boxes)} 个目标 -> {os.path.basename(xml_path)}"
+
+            if hasattr(self.main_window, 'statusBar') and self.main_window.statusBar():
+                self.main_window.statusBar().showMessage(status_msg, 5000)
             safe_print(f"[Auto-Annotate Terminal] {status_msg}")
 
         except Exception as e:
@@ -715,13 +856,12 @@ class AutoAnnotateDialog(QDialog):
                 reply = QMessageBox.question(
                     self,
                     "批量覆盖确认",
-                    f"在保存目录中检测到 {existing_count} 个已存在的标注文件！\n当前为【完全覆盖替换模式】，是否确定覆盖现有标注？\n\n(提示：若想保留已有标注并在其上新增目标，请切换为【追加合并模式】)",
+                    f"在保存目录中检测到 {existing_count} 个已存在的标注文件！\n当前为【完全覆盖模式】，是否确定覆盖现有标注？\n\n(提示：若想保留已有标注并在其上新增目标，请切换为【追加合并模式】)",
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No if hasattr(QMessageBox, 'StandardButton') else QMessageBox.Yes | QMessageBox.No,
                     QMessageBox.StandardButton.No if hasattr(QMessageBox, 'StandardButton') else QMessageBox.No
                 )
                 yes_val = QMessageBox.StandardButton.Yes if hasattr(QMessageBox, 'StandardButton') else QMessageBox.Yes
                 if reply != yes_val:
-                    self.lbl_status.setText("已取消批量自动批注")
                     return
 
         if hasattr(self.main_window, 'defaultSaveDir'):
@@ -730,6 +870,9 @@ class AutoAnnotateDialog(QDialog):
         conf = self.slider_conf.value() / 100.0
         iou = self.slider_iou.value() / 100.0
         mapping = self.get_class_mapping()
+
+        self.progress_bar.setValue(0)
+        self.progress_bar.setVisible(True)
 
         self.batch_thread = BatchAnnotationThread(
             annotator=self.annotator,
@@ -743,30 +886,37 @@ class AutoAnnotateDialog(QDialog):
             custom_output_dir=save_dir
         )
 
-
         self.batch_thread.progress_signal.connect(self.on_batch_progress)
         self.batch_thread.finished_signal.connect(self.on_batch_finished)
         self.batch_thread.error_signal.connect(self.on_batch_error)
 
-        print(f"[Auto-Annotate Terminal] 开始批量自动批注文件夹 (共 {len(image_paths)} 张图片)...", flush=True)
+        msg = f"[Auto-Annotate Terminal] 开始批量自动批注文件夹 (共 {len(image_paths)} 张图片)..."
+        if hasattr(self.main_window, 'statusBar') and self.main_window.statusBar():
+            self.main_window.statusBar().showMessage(msg, 5000)
+        print(msg, flush=True)
         self.batch_thread.start()
 
     def on_batch_progress(self, current: int, total: int, filename: str, status_msg: str):
         val = int(current / total * 100) if total > 0 else 0
         self.progress_bar.setValue(val)
-        msg = f"[{current}/{total}] {filename} - {status_msg}"
-        self.lbl_status.setText(msg)
+        msg = f"[批量标注 {current}/{total}] {filename} - {status_msg}"
+        if hasattr(self.main_window, 'statusBar') and self.main_window.statusBar():
+            self.main_window.statusBar().showMessage(msg, 3000)
         print(f"[Auto-Annotate Terminal] {msg}", flush=True)
 
     def on_batch_finished(self, processed: int, total_boxes: int):
+        self.progress_bar.setVisible(False)
         if hasattr(self.main_window, 'filePath') and self.main_window.filePath:
             self.main_window.loadFile(self.main_window.filePath)
 
         save_dir = self.cur_xml_dir
         finish_msg = f"批量自动批注完成！成功处理 {processed} 张图片，生成 {total_boxes} 个目标标注 (保存于: {save_dir})"
-        self.lbl_status.setText(finish_msg)
+        if hasattr(self.main_window, 'statusBar') and self.main_window.statusBar():
+            self.main_window.statusBar().showMessage(finish_msg, 6000)
         print(f"[Auto-Annotate Terminal] {finish_msg}", flush=True)
 
     def on_batch_error(self, err_msg: str):
+        self.progress_bar.setVisible(False)
         print(f"[Auto-Annotate Terminal Error] 批量批注中断: {err_msg}", flush=True)
         QMessageBox.critical(self, "批量批注中断", err_msg)
+

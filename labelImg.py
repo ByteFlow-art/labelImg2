@@ -9,9 +9,10 @@ import re
 import sys
 import subprocess
 import math
-import yaml, yamlloader
+import xml.etree.ElementTree as ET
 from functools import partial
 from collections import defaultdict, OrderedDict
+
 
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
@@ -197,15 +198,83 @@ class MainWindow(QMainWindow, WindowMixin):
         self.controlButtonsLayout.addWidget(self.nextButton)
         self.controlButtonsLayout.addWidget(self.playButton)
 
-        filelistLayout.addLayout(self.controlButtonsLayout)
-
         filelistLayout.addWidget(self.fileListView)
+
+        # 标注数据统计面板 (当前图片统计 + 全部文件统计)
+        self.statsWidget = QFrame()
+        self.statsWidget.setObjectName("statsWidget")
+        self.statsWidget.setStyleSheet("""
+            QFrame#statsWidget {
+                background-color: #F8FAFC;
+                border-top: 1px solid #CBD5E1;
+                border-radius: 4px;
+                margin-top: 4px;
+            }
+            QLabel#statsTitle {
+                font-size: 11px;
+                font-weight: bold;
+                color: #475569;
+            }
+            QLabel#statsHighlight {
+                font-size: 12px;
+                font-weight: bold;
+                color: #2563EB;
+            }
+            QLabel#statsContent {
+                font-size: 11px;
+                color: #334155;
+            }
+        """)
+        stats_layout = QVBoxLayout(self.statsWidget)
+        stats_layout.setContentsMargins(8, 6, 8, 6)
+        stats_layout.setSpacing(4)
+
+        # 1. 当前图片标注统计
+        row_cur = QHBoxLayout()
+        lbl_cur_t = QLabel("📊 当前图片:")
+        lbl_cur_t.setObjectName("statsTitle")
+        self.lbl_cur_stats = QLabel("未载入图片")
+        self.lbl_cur_stats.setObjectName("statsHighlight")
+        row_cur.addWidget(lbl_cur_t)
+        row_cur.addWidget(self.lbl_cur_stats, stretch=1)
+        stats_layout.addLayout(row_cur)
+
+        self.lbl_cur_details = QLabel("—")
+        self.lbl_cur_details.setObjectName("statsContent")
+        self.lbl_cur_details.setWordWrap(True)
+        stats_layout.addWidget(self.lbl_cur_details)
+
+        # 分割线
+        div_line = QFrame()
+        div_line.setFrameShape(QFrame.HLine)
+        div_line.setFrameShadow(QFrame.Sunken)
+        div_line.setStyleSheet("color: #E2E8F0; max-height: 1px;")
+        stats_layout.addWidget(div_line)
+
+        # 2. 全部文件标注统计
+        row_all = QHBoxLayout()
+        lbl_all_t = QLabel("📁 全部文件:")
+        lbl_all_t.setObjectName("statsTitle")
+        self.lbl_all_stats = QLabel("0 / 0 张已标 (0 个目标)")
+        self.lbl_all_stats.setObjectName("statsHighlight")
+        row_all.addWidget(lbl_all_t)
+        row_all.addWidget(self.lbl_all_stats, stretch=1)
+        stats_layout.addLayout(row_all)
+
+        self.lbl_all_details = QLabel("—")
+        self.lbl_all_details.setObjectName("statsContent")
+        self.lbl_all_details.setWordWrap(True)
+        stats_layout.addWidget(self.lbl_all_details)
+
+        filelistLayout.addWidget(self.statsWidget)
+
         fileListContainer = QWidget()
         fileListContainer.setLayout(filelistLayout)
 
         self.filedock = QDockWidget(u'File List', self)
         self.filedock.setObjectName(u'Files')
         self.filedock.setWidget(fileListContainer)
+
 
         self.zoomWidget = ZoomWidget()
 
@@ -661,6 +730,8 @@ class MainWindow(QMainWindow, WindowMixin):
         self.canvas.resetState()
         self.labelCoordinates.clear()
         self.imageDim.clear()
+        self.update_stats()
+
 
     def labelDataChanged(self, topLeft, bottomRight):
         item0 = self.labelModel.item(topLeft.row(), 0)
@@ -1061,6 +1132,8 @@ class MainWindow(QMainWindow, WindowMixin):
         self.canvas.loadShapes(s)
         self.canvas.reorderShapesByArea()
         self.reorder_label_table()
+        self.update_stats()
+
 
     def saveLabels(self, annotationFilePath):
         if self.labelFile is None:
@@ -1351,8 +1424,11 @@ class MainWindow(QMainWindow, WindowMixin):
                     pass
 
             self.canvas.setFocus(True)
+            self.update_stats()
             return True
+        self.update_stats()
         return False
+
 
     def eventFilter(self, obj, event):
         if event.type() == QEvent.KeyPress:
@@ -1728,6 +1804,91 @@ class MainWindow(QMainWindow, WindowMixin):
             self.paintCanvas()
             self.saveFile()
 
+    def update_stats(self):
+        """实时更新右下角 File List 底部的标注数据统计看板"""
+        if not hasattr(self, 'lbl_cur_stats') or not hasattr(self, 'lbl_all_stats'):
+            return
+
+        # 1. 当前打开图片的标注框统计
+        if hasattr(self, 'canvas') and getattr(self, 'filePath', None) and os.path.exists(self.filePath):
+            cur_shapes = getattr(self.canvas, 'shapes', []) or []
+            cnt = len(cur_shapes)
+            self.lbl_cur_stats.setText(f"共 {cnt} 个标注框")
+            cls_map = {}
+            for s in cur_shapes:
+                lbl = s.label or "未命名"
+                cls_map[lbl] = cls_map.get(lbl, 0) + 1
+            if cls_map:
+                details = " | ".join(f"{k}: {v}" for k, v in sorted(cls_map.items(), key=lambda x: x[1], reverse=True))
+                self.lbl_cur_details.setText(details)
+                self.lbl_cur_details.setToolTip(f"当前图片类别分布:\n" + "\n".join(f"{k}: {v} 个" for k, v in sorted(cls_map.items(), key=lambda x: x[1], reverse=True)))
+            else:
+                self.lbl_cur_details.setText("暂无标注框 (未标注 / 负样本)")
+                self.lbl_cur_details.setToolTip("")
+        else:
+            self.lbl_cur_stats.setText("未载入图片")
+            self.lbl_cur_details.setText("—")
+            self.lbl_cur_details.setToolTip("")
+
+        # 2. 全部文件列表的标注框与文件统计
+        imglist = getattr(self.fileModel, 'imgList', []) or []
+        if not imglist:
+            self.lbl_all_stats.setText("0 / 0 张已标 (0 个目标)")
+            self.lbl_all_details.setText("—")
+            self.lbl_all_details.setToolTip("")
+            return
+
+        total_images = len(imglist)
+        save_dir = getattr(self, 'defaultSaveDir', "") or (getattr(self, 'dirpath', "") or "")
+
+        if not hasattr(self, '_xml_stats_cache'):
+            self._xml_stats_cache = {}  # xml_path: (mtime, count, dict_classes)
+
+        total_boxes = 0
+        labeled_images = 0
+        all_cls_map = {}
+
+        for img_path in imglist:
+            stem = os.path.splitext(os.path.basename(img_path))[0]
+            xml_path = os.path.join(save_dir, f"{stem}.xml") if save_dir else os.path.join(os.path.dirname(img_path), f"{stem}.xml")
+            if os.path.exists(xml_path):
+                labeled_images += 1
+                try:
+                    mtime = os.path.getmtime(xml_path)
+                    cached = self._xml_stats_cache.get(xml_path)
+                    if cached and cached[0] == mtime:
+                        b_cnt, b_map = cached[1], cached[2]
+                    else:
+                        tree = ET.parse(xml_path)
+                        objs = tree.getroot().findall("object")
+                        b_cnt = len(objs)
+                        b_map = {}
+                        for o in objs:
+                            n = o.findtext("name", "未命名")
+                            b_map[n] = b_map.get(n, 0) + 1
+                        self._xml_stats_cache[xml_path] = (mtime, b_cnt, b_map)
+
+                    total_boxes += b_cnt
+                    for k, v in b_map.items():
+                        all_cls_map[k] = all_cls_map.get(k, 0) + v
+                except Exception:
+                    pass
+
+        pct = (labeled_images / total_images * 100.0) if total_images > 0 else 0.0
+        self.lbl_all_stats.setText(f"{labeled_images}/{total_images} 张已标 ({pct:.1f}%) | 共 {total_boxes} 个目标")
+        if all_cls_map:
+            top_classes = sorted(all_cls_map.items(), key=lambda x: x[1], reverse=True)
+            details_str = " | ".join(f"{k}: {v}" for k, v in top_classes[:5])
+            if len(top_classes) > 5:
+                details_str += f" 等共 {len(top_classes)} 类..."
+            self.lbl_all_details.setText(details_str)
+            full_str = "\n".join(f"{k}: {v} 个" for k, v in top_classes)
+            self.lbl_all_details.setToolTip(f"全部标签分布详情 (共 {total_boxes} 个目标):\n{full_str}")
+        else:
+            self.lbl_all_details.setText("暂无已保存的标注文件")
+            self.lbl_all_details.setToolTip("")
+
+
     def openPrevImg(self, _value=False):
         currIndex = self.filesm.currentIndex()
         if currIndex.row() - 1 < 0:
@@ -1861,6 +2022,11 @@ class MainWindow(QMainWindow, WindowMixin):
                 if cur.isValid():
                     self.fileModel.setData(cur, len(self.canvas.shapes), Qt.BackgroundRole)
                     self.fileListView.viewport().update()
+            if hasattr(self, '_xml_stats_cache'):
+                self._xml_stats_cache.pop(annotationFilePath, None)
+                self._xml_stats_cache.pop(annotationFilePath + XML_EXT, None)
+            self.update_stats()
+
 
     def closeFile(self, _value=False):
         if not self.mayContinue():
@@ -2140,6 +2306,7 @@ class MainWindow(QMainWindow, WindowMixin):
                 msg = f"[Shortcut Q/Del Terminal] 已成功删除当前选中标注框 ({len(deleted)} 个)"
                 self.statusBar().showMessage(msg, 3000)
                 log_terminal(msg)
+                self.update_stats()
             else:
                 log_terminal("[Shortcut Q/Del Terminal] 提示: 当前未选中任何标注框 (请先在画布或列表中点击选中要删除的框)")
         finally:
@@ -2149,6 +2316,8 @@ class MainWindow(QMainWindow, WindowMixin):
         self.remAllLabels()
         self.setDirty()
         self.setBackSample()
+        self.update_stats()
+
 
     def deleteLabel(self):
         self.remAllLabels()

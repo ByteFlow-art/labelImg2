@@ -7,7 +7,9 @@ from PyQt5.QtWidgets import (
     QGroupBox, QTableWidget, QTableWidgetItem, QCheckBox, QProgressBar,
     QFileDialog, QRadioButton, QSpinBox, QDoubleSpinBox, QHeaderView, QColorDialog
 )
+from core.safe_widgets import SafeSlider
 from ui.canvas import CLASS_COLORS
+
 
 class RightPanel(QWidget):
     """
@@ -64,7 +66,7 @@ class RightPanel(QWidget):
         self.lbl_conf_val = QLabel("0.25")
         self.lbl_conf_val.setStyleSheet("color: #3B82F6; font-weight: bold;")
         
-        self.slider_conf = QSlider(Qt.Orientation.Horizontal)
+        self.slider_conf = SafeSlider(Qt.Orientation.Horizontal)
         self.slider_conf.setRange(1, 100)
         self.slider_conf.setValue(25)
         self.slider_conf.valueChanged.connect(self.on_conf_changed)
@@ -79,10 +81,11 @@ class RightPanel(QWidget):
         self.lbl_iou_val = QLabel("0.45")
         self.lbl_iou_val.setStyleSheet("color: #3B82F6; font-weight: bold;")
 
-        self.slider_iou = QSlider(Qt.Orientation.Horizontal)
+        self.slider_iou = SafeSlider(Qt.Orientation.Horizontal)
         self.slider_iou.setRange(1, 100)
         self.slider_iou.setValue(45)
         self.slider_iou.valueChanged.connect(self.on_iou_changed)
+
 
         iou_box.addWidget(self.slider_iou)
         iou_box.addWidget(self.lbl_iou_val)

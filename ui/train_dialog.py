@@ -1,6 +1,7 @@
 import os
 from typing import Optional
 from core.qt_compat import *
+from core.safe_widgets import SafeComboBox, SafeSpinBox, SafeDoubleSpinBox
 from utils.trainer_thread import ModelTrainerThread
 from core.yolo_annotator import YOLOAnnotator
 from ui.styles import LIGHT_WORKSTATION_STYLE
@@ -40,6 +41,8 @@ class TrainDialog(QDialog):
         self.last_trained_pt: Optional[str] = None
 
         self.init_ui()
+        self.restore_settings()
+
 
     def get_icon(self, icon_name: str) -> QIcon:
         from libs.lib import newIcon
@@ -114,39 +117,39 @@ class TrainDialog(QDialog):
         grid.setHorizontalSpacing(16)
 
         grid.addWidget(QLabel("基础预训练权重:"), 0, 0)
-        self.combo_base_model = QComboBox()
+        self.combo_base_model = SafeComboBox()
         self.refresh_base_models()
         self.combo_base_model.currentIndexChanged.connect(self.on_base_model_changed)
         grid.addWidget(self.combo_base_model, 0, 1)
 
         grid.addWidget(QLabel("训练轮数 (Epochs):"), 0, 2)
-        self.spin_epochs = QSpinBox()
+        self.spin_epochs = SafeSpinBox()
         self.spin_epochs.setRange(1, 1000)
         self.spin_epochs.setValue(50)
         grid.addWidget(self.spin_epochs, 0, 3)
 
         grid.addWidget(QLabel("批次大小 (Batch Size):"), 1, 0)
-        self.spin_batch = QSpinBox()
+        self.spin_batch = SafeSpinBox()
         self.spin_batch.setRange(1, 256)
         self.spin_batch.setValue(16)
         grid.addWidget(self.spin_batch, 1, 1)
 
         grid.addWidget(QLabel("输入分辨率 (Img Size):"), 1, 2)
-        self.spin_imgsz = QSpinBox()
+        self.spin_imgsz = SafeSpinBox()
         self.spin_imgsz.setRange(64, 2048)
         self.spin_imgsz.setSingleStep(32)
         self.spin_imgsz.setValue(640)
         grid.addWidget(self.spin_imgsz, 1, 3)
 
         grid.addWidget(QLabel("验证集划分比例:"), 2, 0)
-        self.spin_val = QDoubleSpinBox()
+        self.spin_val = SafeDoubleSpinBox()
         self.spin_val.setRange(0.05, 0.5)
         self.spin_val.setSingleStep(0.05)
         self.spin_val.setValue(0.20)
         grid.addWidget(self.spin_val, 2, 1)
 
         grid.addWidget(QLabel("计算硬件设备:"), 2, 2)
-        self.combo_device = QComboBox()
+        self.combo_device = SafeComboBox()
         if YOLOAnnotator.is_cuda_available():
             self.combo_device.addItems(["CUDA:0 (NVIDIA GPU 加速)", "CPU"])
         else:
@@ -157,6 +160,7 @@ class TrainDialog(QDialog):
         self.txt_model_name = QLineEdit("labelimg_custom_yolo")
         self.txt_model_name.setPlaceholderText("请输入自定义模型保存文件夹名称...")
         grid.addWidget(self.txt_model_name, 3, 1, 1, 3)
+
 
 
 
@@ -366,7 +370,65 @@ class TrainDialog(QDialog):
             self.activateWindow()
         QMessageBox.critical(self, "训练失败", f"模型训练过程报错:\n{err_msg}")
 
+    def save_settings(self):
+        """保存当前模型训练控制台的所有参数真实状态"""
+        try:
+            settings = QSettings("ByteFlow", "LabelImg2")
+            settings.setValue("trainer/epochs", int(self.spin_epochs.value()))
+            settings.setValue("trainer/batch", int(self.spin_batch.value()))
+            settings.setValue("trainer/imgsz", int(self.spin_imgsz.value()))
+            settings.setValue("trainer/val_ratio", float(self.spin_val.value()))
+            settings.setValue("trainer/base_model_idx", int(self.combo_base_model.currentIndex()))
+            settings.setValue("trainer/device_idx", int(self.combo_device.currentIndex()))
+            settings.setValue("trainer/model_name", str(self.txt_model_name.text()))
+            if self.txt_img_path.text():
+                settings.setValue("trainer/img_dir", str(self.txt_img_path.text()))
+            if self.txt_xml_path.text():
+                settings.setValue("trainer/xml_dir", str(self.txt_xml_path.text()))
+        except Exception:
+            pass
+
+    def restore_settings(self):
+        """还原上次关闭前的真实参数状态"""
+        try:
+            settings = QSettings("ByteFlow", "LabelImg2")
+            self.spin_epochs.setValue(settings.value("trainer/epochs", 50, type=int))
+            self.spin_batch.setValue(settings.value("trainer/batch", 16, type=int))
+            self.spin_imgsz.setValue(settings.value("trainer/imgsz", 640, type=int))
+            self.spin_val.setValue(settings.value("trainer/val_ratio", 0.20, type=float))
+
+            model_idx = settings.value("trainer/base_model_idx", 0, type=int)
+            if 0 <= model_idx < self.combo_base_model.count():
+                self.combo_base_model.setCurrentIndex(model_idx)
+
+            dev_idx = settings.value("trainer/device_idx", 0, type=int)
+            if 0 <= dev_idx < self.combo_device.count():
+                self.combo_device.setCurrentIndex(dev_idx)
+
+            saved_name = settings.value("trainer/model_name", "labelimg_custom_yolo", type=str)
+            if saved_name:
+                self.txt_model_name.setText(saved_name)
+
+            saved_img_dir = settings.value("trainer/img_dir", "", type=str)
+            if saved_img_dir and os.path.exists(saved_img_dir) and not self.txt_img_path.text():
+                self.txt_img_path.setText(saved_img_dir)
+
+            saved_xml_dir = settings.value("trainer/xml_dir", "", type=str)
+            if saved_xml_dir and os.path.exists(saved_xml_dir) and not self.txt_xml_path.text():
+                self.txt_xml_path.setText(saved_xml_dir)
+        except Exception:
+            pass
+
+    def closeEvent(self, event):
+        self.save_settings()
+        super().closeEvent(event)
+
+    def hideEvent(self, event):
+        self.save_settings()
+        super().hideEvent(event)
+
     def apply_trained_model(self):
         if self.last_trained_pt and os.path.exists(self.last_trained_pt):
             self.model_trained_signal.emit(self.last_trained_pt)
             self.accept()
+
