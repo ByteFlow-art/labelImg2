@@ -109,6 +109,31 @@ class CFileListModel(QStringListModel):
 
         return super(CFileListModel, self).setData(index, value, role)
 
+    def getTotalBoxCount(self):
+        """高速统计当前所有图片中已存在的标注框总数 (纯内存计算，0 毫秒完成)"""
+        total = 0
+        for item in self.dispList:
+            cnt = item[1]
+            if cnt is not None and isinstance(cnt, int):
+                total += cnt
+        return total
+
+    def setItemBoxCount(self, row: int, count: int, mark_modified: bool = False):
+        """更新指定行图片的标注框数量，并可选标记为会话已修改"""
+        if 0 <= row < len(self.dispList):
+            self.dispList[row][1] = count
+            if mark_modified:
+                self.dispList[row][2] = True
+                str_list = self.stringList()
+                if row < len(str_list):
+                    self.session_saved_files.add(str_list[row])
+                    self.session_saved_files.add(os.path.abspath(str_list[row]))
+                if len(self.dispList[row]) > 0 and self.dispList[row][0]:
+                    self.session_saved_files.add(self.dispList[row][0])
+            idx = self.index(row)
+            self.dataChanged.emit(idx, idx)
+
+
 
 
 class CFileItemEditDelegate(QStyledItemDelegate):

@@ -843,11 +843,24 @@ class MainWindow(QMainWindow, WindowMixin):
             if self.defaultSaveDir is not None:
                 self.labelList.earlyCommit()
                 if self.dirty is True:
-                    # 无论是否有标注框，均保存对应的标注文件并标为荧光绿
-                    self.markFileSavedInList(previous, len(self.canvas.shapes))
-                    self.saveFile()
+                    if len(self.canvas.shapes) == 0:
+                        prev_file = self.fileModel.data(previous, Qt.EditRole)
+                        reply = QMessageBox.question(
+                            self,
+                            "保存空标注确认",
+                            f"图片 [{os.path.basename(prev_file or self.filePath or '')}] 未绘制任何标注框。\n是否确认保存为空标注（负样本/背景图）文件？",
+                            QMessageBox.Yes | QMessageBox.No,
+                            QMessageBox.Yes
+                        )
+                        if reply == QMessageBox.Yes:
+                            self.markFileSavedInList(previous, 0)
+                            self.saveFile(prompt_empty=False)
+                        else:
+                            self.setClean()
+                    else:
+                        self.markFileSavedInList(previous, len(self.canvas.shapes))
+                        self.saveFile(prompt_empty=False)
                 elif len(self.canvas.shapes) == 0 and self.filePath:
-                    # 对于从未保存过的空标签图片，同样自动保存一个空 XML
                     prev_file = self.fileModel.data(previous, Qt.EditRole)
                     if prev_file:
                         stem = os.path.splitext(os.path.basename(prev_file))[0]
@@ -858,11 +871,20 @@ class MainWindow(QMainWindow, WindowMixin):
                         else:
                             xml_path = os.path.join(os.path.dirname(prev_file), stem) + '.xml'
                         if not os.path.exists(xml_path):
-                            self.markFileSavedInList(previous, 0)
-                            self.saveFile()
+                            reply = QMessageBox.question(
+                                self,
+                                "保存空标注确认",
+                                f"图片 [{os.path.basename(prev_file)}] 未绘制任何标注框。\n是否确认保存为空标注（负样本/背景图）文件？",
+                                QMessageBox.Yes | QMessageBox.No,
+                                QMessageBox.Yes
+                            )
+                            if reply == QMessageBox.Yes:
+                                self.markFileSavedInList(previous, 0)
+                                self.saveFile(prompt_empty=False)
             else:
                 self.changeSavedirDialog()
                 return
+
         else:
             # 未开启自动保存时，如果当前图片未保存，提示用户保存/放弃
             if self.dirty is True:
@@ -1659,24 +1681,25 @@ class MainWindow(QMainWindow, WindowMixin):
 
     def changeSavedirDialog(self, _value=False):
         log_terminal("[Shortcut Ctrl+R Terminal] 触发修改标注保存路径窗口")
-        path = self.defaultSaveDir if (self.defaultSaveDir and os.path.exists(self.defaultSaveDir)) else (self.lastOpenDir if (self.lastOpenDir and os.path.exists(self.lastOpenDir)) else '.')
+        path = self.defaultSaveDir if (self.defaultSaveDir and os.path.exists(self.defaultSaveDir)) else (self.settings.get('last_save_dir', '') if (self.settings.get('last_save_dir', '') and os.path.exists(self.settings.get('last_save_dir', ''))) else (self.dirname if (self.dirname and os.path.exists(self.dirname)) else '.'))
 
         dirpath = QFileDialog.getExistingDirectory(self,
                                                        '%s - Save annotations to the directory' % __appname__, path,  QFileDialog.ShowDirsOnly
                                                        | QFileDialog.DontResolveSymlinks)
 
-        if dirpath is not None and len(dirpath) > 1:
+        if dirpath is not None and len(dirpath) > 1 and os.path.exists(dirpath):
             self.defaultSaveDir = dirpath
-            self.lastOpenDir = dirpath
             self.settings[SETTING_SAVE_DIR] = dirpath
-            self.settings[SETTING_LAST_OPEN_DIR] = dirpath
+            self.settings['last_save_dir'] = dirpath
             self.settings.save()
 
-        imglist = self.scanAllImages(self.dirname)
-        self.fileModel.setStringList(imglist, self.dirname, self.defaultSaveDir)
+        if hasattr(self, 'dirname') and self.dirname and os.path.exists(self.dirname):
+            imglist = self.scanAllImages(self.dirname)
+            self.fileModel.setStringList(imglist, self.dirname, self.defaultSaveDir)
+            self.calculate_initial_stats()
 
         self.statusBar().showMessage('%s . Annotation will be saved to %s' %
-                                     ('Change saved folder', self.defaultSaveDir))
+                                     ('Change saved folder', self.defaultSaveDir or ''))
         self.statusBar().show()
 
     def openAnnotationDialog(self, _value=False):
@@ -1685,16 +1708,13 @@ class MainWindow(QMainWindow, WindowMixin):
             self.statusBar().show()
             return
 
-        path = self.defaultSaveDir if (self.defaultSaveDir and os.path.exists(self.defaultSaveDir)) else (self.lastOpenDir if (self.lastOpenDir and os.path.exists(self.lastOpenDir)) else (os.path.dirname(self.filePath) if self.filePath else '.'))
+        path = self.defaultSaveDir if (self.defaultSaveDir and os.path.exists(self.defaultSaveDir)) else (self.dirname if (self.dirname and os.path.exists(self.dirname)) else (os.path.dirname(self.filePath) if self.filePath else '.'))
         filters = "Open Annotation XML file (%s)" % ' '.join(['*.xml'])
         filename = QFileDialog.getOpenFileName(self,'%s - Choose a xml file' % __appname__, path, filters)
         if filename:
             if isinstance(filename, (tuple, list)):
                 filename = filename[0]
             if filename and os.path.exists(filename):
-                self.lastOpenDir = os.path.dirname(filename)
-                self.settings[SETTING_LAST_OPEN_DIR] = self.lastOpenDir
-                self.settings.save()
                 self.loadPascalXMLByFilename(filename)
 
     def openDirDialog(self, _value=False, dirpath=None):
@@ -1702,14 +1722,13 @@ class MainWindow(QMainWindow, WindowMixin):
             return
 
         log_terminal("[Shortcut Ctrl+U Terminal] 触发打开图片文件夹选择窗口")
-        defaultOpenDirPath = dirpath if dirpath else (self.lastOpenDir if (self.lastOpenDir and os.path.exists(self.lastOpenDir)) else (os.path.dirname(self.filePath) if self.filePath else '.'))
+        defaultOpenDirPath = dirpath if dirpath else (self.dirname if (self.dirname and os.path.exists(self.dirname)) else (self.settings.get('last_image_dir', '') if (self.settings.get('last_image_dir', '') and os.path.exists(self.settings.get('last_image_dir', ''))) else '.'))
 
         targetDirPath = QFileDialog.getExistingDirectory(self,
                                                      '%s - Open Directory' % __appname__, defaultOpenDirPath,
                                                      QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks)
         if targetDirPath and os.path.exists(targetDirPath):
-            self.lastOpenDir = targetDirPath
-            self.settings[SETTING_LAST_OPEN_DIR] = targetDirPath
+            self.settings['last_image_dir'] = targetDirPath
             self.settings.save()
             self.importDirImages(targetDirPath)
 
@@ -1718,10 +1737,13 @@ class MainWindow(QMainWindow, WindowMixin):
         QTimer.singleShot(150, self.refreshCurrentDir)
 
     def refreshCurrentDir(self):
-        """外部文件变动或目录内容变动时，实时自动重新扫描并刷新照片列表与对应画面"""
+        """外部图片增删时，自动重新扫描并刷新列表（仅在图片列表实际变化时刷新，避免保存 XML 引起的重复重载与卡顿）"""
         if not hasattr(self, 'dirname') or not self.dirname or not os.path.exists(self.dirname):
             return
         imglist = self.scanAllImages(self.dirname)
+        old_list = self.fileModel.stringList() if hasattr(self, 'fileModel') and self.fileModel else []
+        if imglist == old_list:
+            return
         cur_file = self.filePath
         self.fileModel.setStringList(imglist, self.dirname, self.defaultSaveDir)
         if cur_file and cur_file in imglist:
@@ -1735,20 +1757,25 @@ class MainWindow(QMainWindow, WindowMixin):
         elif imglist:
             self.loadFile(imglist[0])
         self.fileListView.viewport().update()
+        self.update_stats()
 
     def importDirImages(self, dirpath, target_file=None):
         if not self.mayContinue() or not dirpath or not os.path.exists(dirpath):
             return
 
-        self.lastOpenDir = dirpath
         self.dirname = dirpath
+        self.settings['last_image_dir'] = dirpath
+        # 仅在未配置自定义保存路径时，默认 label dir 与 image dir 一致
         if not self.defaultSaveDir or not os.path.exists(self.defaultSaveDir):
             self.defaultSaveDir = dirpath
-        
+            self.settings[SETTING_SAVE_DIR] = dirpath
+        self.settings.save()
+
         imglist = self.scanAllImages(dirpath)
         self.fileModel.setStringList(imglist, self.dirname, self.defaultSaveDir)
 
         self.setWindowTitle(__appname__ + ' ' + self.dirname)
+        self.calculate_initial_stats()
 
         # 挂载/更新目录变动监控
         if hasattr(self, 'dir_watcher'):
@@ -1756,8 +1783,6 @@ class MainWindow(QMainWindow, WindowMixin):
             if existing_dirs:
                 self.dir_watcher.removePaths(existing_dirs)
             self.dir_watcher.addPath(dirpath)
-            if self.defaultSaveDir and os.path.exists(self.defaultSaveDir) and self.defaultSaveDir != dirpath:
-                self.dir_watcher.addPath(self.defaultSaveDir)
 
         target_to_load = None
         if target_file and target_file in imglist:
@@ -1773,13 +1798,10 @@ class MainWindow(QMainWindow, WindowMixin):
             self.fileListView.viewport().update()
 
     def verifyImg(self, _value=False):
-        # Proceding next image without dialog if having any label
          if self.filePath is not None:
             try:
                 self.labelFile.toggleVerify()
             except AttributeError:
-                # If the labelling file does not exist yet, create if and
-                # re-save it with the verified attribute.
                 self.saveFile()
                 self.labelFile.toggleVerify()
 
@@ -1788,98 +1810,40 @@ class MainWindow(QMainWindow, WindowMixin):
             self.paintCanvas()
             self.saveFile()
 
-    def resolve_image_xml_path(self, img_path):
-        """解析任意图片对应的实际 XML 标注文件路径"""
-        if not img_path:
-            return None
-        stem = os.path.splitext(os.path.basename(img_path))[0]
-        img_d = os.path.dirname(img_path)
-        candidates = []
-        if self.defaultSaveDir and os.path.exists(self.defaultSaveDir):
-            if self.dirname and os.path.exists(self.dirname):
-                try:
-                    rel = os.path.relpath(img_path, self.dirname)
-                    candidates.append(os.path.join(self.defaultSaveDir, os.path.splitext(rel)[0] + ".xml"))
-                except Exception:
-                    pass
-            candidates.append(os.path.join(self.defaultSaveDir, stem + ".xml"))
-        candidates.append(os.path.splitext(img_path)[0] + ".xml")
-        candidates.append(os.path.join(img_d, stem + ".xml"))
-        candidates.append(os.path.join(img_d, "Annotations", stem + ".xml"))
-        parent_d = os.path.dirname(img_d)
-        candidates.append(os.path.join(parent_d, "Annotations", stem + ".xml"))
-
-        for c in candidates:
-            if os.path.exists(c) and os.path.isfile(c):
-                return c
-        return None
+    def calculate_initial_stats(self):
+        """打开项目时建立初始基准总标签数"""
+        if hasattr(self, 'fileModel') and self.fileModel:
+            self._session_initial_total = self.fileModel.getTotalBoxCount()
+        else:
+            self._session_initial_total = 0
+        self.update_stats()
 
     def update_stats(self):
-        """实时更新右下角 File List 上方控制栏的数字统计"""
+        """毫秒级极速更新右下角 File List 上方控制栏的数字统计 (0 毫秒纯内存计算，不读取磁盘，不发生跳动与卡顿)"""
         if not hasattr(self, 'lbl_session_count') or not hasattr(self, 'lbl_total_count'):
             return
 
-        # 1. 追踪当前打开图片的新增差值（支持已有标签项目）
-        if hasattr(self, 'canvas') and getattr(self, 'filePath', None) and os.path.exists(self.filePath):
-            cur_shapes = getattr(self.canvas, 'shapes', []) or []
-            cur_count = len(cur_shapes)
-            if self.filePath not in self._baseline_box_counts:
-                # 建立打开此图时的初始基准标签数（包括原本已有标签）
-                xml_path = self.resolve_image_xml_path(self.filePath)
-                initial_cnt = cur_count
-                if xml_path and os.path.exists(xml_path):
-                    try:
-                        tree = ET.parse(xml_path)
-                        initial_cnt = len(tree.getroot().findall("object"))
-                    except Exception:
-                        pass
-                self._baseline_box_counts[self.filePath] = initial_cnt
-
-            baseline = self._baseline_box_counts.get(self.filePath, 0)
-            self._session_added_map[self.filePath] = max(0, cur_count - baseline)
-
-        # 本次打开工具以来累计新增的所有标签数 (数字前不加 +)
-        total_session_added = sum(self._session_added_map.values()) if hasattr(self, '_session_added_map') else 0
-        self.lbl_session_count.setText(f"本次: {total_session_added}")
-        self.lbl_session_count.setToolTip(f"本次打开工具期间累计新增标签框: {total_session_added} 个")
-
-        # 2. 统计当前项目/文件夹所有已有标签总数
-        imglist = []
-        if hasattr(self, 'fileModel') and self.fileModel:
-            try:
-                imglist = self.fileModel.stringList() or []
-            except Exception:
-                imglist = []
-
-        if not imglist:
+        if not hasattr(self, 'fileModel') or not self.fileModel or self.fileModel.rowCount() == 0:
+            self.lbl_session_count.setText("本次: 0")
             self.lbl_total_count.setText("总计: 0")
-            self.lbl_total_count.setToolTip("当前项目暂无图片")
             return
 
+        # 同步当前打开图片在 fileModel 内存模型中的最新框数
+        if hasattr(self, 'canvas') and getattr(self, 'filePath', None) and hasattr(self, 'filesm'):
+            cur_idx = self.filesm.currentIndex()
+            if cur_idx.isValid() and cur_idx.row() < len(self.fileModel.dispList):
+                self.fileModel.dispList[cur_idx.row()][1] = len(self.canvas.shapes)
 
-        total_boxes = 0
+        current_total = self.fileModel.getTotalBoxCount()
+        initial_total = getattr(self, '_session_initial_total', 0)
+        session_added = max(0, current_total - initial_total)
 
-        for img_path in imglist:
-            if getattr(self, 'filePath', None) and img_path == self.filePath and hasattr(self, 'canvas'):
-                total_boxes += len(self.canvas.shapes)
-            else:
-                xml_path = self.resolve_image_xml_path(img_path)
-                if xml_path and os.path.exists(xml_path):
-                    try:
-                        mtime = os.path.getmtime(xml_path)
-                        cached = self._xml_stats_cache.get(xml_path)
-                        if cached and cached[0] == mtime:
-                            b_cnt = cached[1]
-                        else:
-                            tree = ET.parse(xml_path)
-                            b_cnt = len(tree.getroot().findall("object"))
-                            self._xml_stats_cache[xml_path] = (mtime, b_cnt)
-                        total_boxes += b_cnt
-                    except Exception:
-                        pass
+        self.lbl_session_count.setText(f"本次: {session_added}")
+        self.lbl_session_count.setToolTip(f"本次打开工具期间累计新增标签框: {session_added} 个 (当前总计: {current_total} - 初始总计: {initial_total})")
 
-        self.lbl_total_count.setText(f"总计: {total_boxes}")
-        self.lbl_total_count.setToolTip(f"当前项目所有已有标签框总数: {total_boxes} 个 (共 {len(imglist)} 张图片)")
+        self.lbl_total_count.setText(f"总计: {current_total}")
+        self.lbl_total_count.setToolTip(f"当前项目所有已有标签框总数: {current_total} 个 (共 {self.fileModel.rowCount()} 张图片)")
+
 
 
 
@@ -1911,7 +1875,7 @@ class MainWindow(QMainWindow, WindowMixin):
         if not self.mayContinue():
             return
         log_terminal("[Shortcut Ctrl+O Terminal] 触发打开图片/文件选择窗口")
-        path = self.lastOpenDir if (self.lastOpenDir and os.path.exists(self.lastOpenDir)) else (os.path.dirname(self.filePath) if self.filePath else '.')
+        path = self.dirname if (self.dirname and os.path.exists(self.dirname)) else (self.settings.get('last_image_dir', '') if (self.settings.get('last_image_dir', '') and os.path.exists(self.settings.get('last_image_dir', ''))) else (os.path.dirname(self.filePath) if self.filePath else '.'))
         formats = ['*.%s' % fmt.data().decode("ascii").lower() for fmt in QImageReader.supportedImageFormats()]
         filters = "Image & Label files (%s)" % ' '.join(formats + ['*%s' % LabelFile.suffix])
         filename = QFileDialog.getOpenFileName(self, '%s - Choose Image or Label file' % __appname__, path, filters)
@@ -1919,32 +1883,44 @@ class MainWindow(QMainWindow, WindowMixin):
             if isinstance(filename, (tuple, list)):
                 filename = filename[0]
             if filename and os.path.exists(filename):
-                self.lastOpenDir = os.path.dirname(filename)
-                self.settings[SETTING_LAST_OPEN_DIR] = self.lastOpenDir
+                # 只有通过 Open 打开单张文件时，才默认将 image dir 与 label dir 设在同一路径下
+                f_dir = os.path.dirname(filename)
+                self.dirname = f_dir
+                self.defaultSaveDir = f_dir
+                self.settings['last_image_dir'] = f_dir
+                self.settings[SETTING_SAVE_DIR] = f_dir
                 self.settings.save()
                 self.loadFile(filename)
 
             if self.filePath is not None:
                 imglist = [self.filePath]
-                self.fileModel.setStringList(imglist)
+                self.fileModel.setStringList(imglist, self.dirname, self.defaultSaveDir)
                 if self.fileModel.rowCount() > 0:
                     curIndex = self.fileModel.index(0)
                     self.filesm.blockSignals(True)
                     self.filesm.setCurrentIndex(curIndex, QItemSelectionModel.SelectCurrent)
                     self.filesm.blockSignals(False)
+                self.calculate_initial_stats()
 
     def saveLocal(self, file_path):
         imgFileDir = os.path.dirname(file_path)
         imgFileName = os.path.basename(file_path)
         savedFileName = os.path.splitext(imgFileName)[0]
         savedPath = os.path.join(imgFileDir, savedFileName)
-        if self.labelFile:
-            self._saveFile(savedPath)
-        else:
-            # 无 labelFile 时直接用同目录路径保存（用于空标签自动保存，避免弹出对话框）
-            self._saveFile(savedPath)
+        self._saveFile(savedPath)
 
-    def saveFile(self, _value=False):
+    def saveFile(self, _value=False, prompt_empty=True):
+        if hasattr(self, 'canvas') and len(self.canvas.shapes) == 0 and getattr(self, 'filePath', None) and prompt_empty:
+            reply = QMessageBox.question(
+                self,
+                "保存空标注确认",
+                f"当前图片 [{os.path.basename(self.filePath)}] 未绘制任何标注框。\n是否确认保存为空标注（负样本/背景图）文件？",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes
+            )
+            if reply != QMessageBox.Yes:
+                return False
+
         if self.defaultSaveDir is not None and len(self.defaultSaveDir):
             if self.filePath:
                 if self.dirname is not None and os.path.exists(self.dirname):
@@ -1963,6 +1939,8 @@ class MainWindow(QMainWindow, WindowMixin):
                     self.saveLocal(self.filePath)
         else:
             self.saveLocal(self.filePath)
+        return True
+
             
 
     def removeFile(self):

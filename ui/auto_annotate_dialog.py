@@ -298,11 +298,10 @@ class AutoAnnotateDialog(QDialog):
         main_layout.addWidget(scroll_area)
 
     def sync_paths_from_main_window(self):
-
-        """同步 LabelImg 主窗口中当前打开的图片路径、保存路径与保存格式"""
+        """同步 LabelImg 主窗口中当前打开的图片路径、保存路径与保存格式（相互独立互不干扰）"""
         if self.main_window:
-            cur_img_dir = getattr(self.main_window, 'dirpath', "") or getattr(self.main_window, 'lastOpenDir', "") or ""
-            cur_xml_dir = getattr(self.main_window, 'defaultSaveDir', "") or cur_img_dir
+            cur_img_dir = getattr(self.main_window, 'dirname', "") or (os.path.dirname(self.main_window.filePath) if getattr(self.main_window, 'filePath', None) else "") or (self.main_window.settings.get('last_image_dir', "") if hasattr(self.main_window, 'settings') else "")
+            cur_xml_dir = getattr(self.main_window, 'defaultSaveDir', "") or (self.main_window.settings.get('last_save_dir', "") if hasattr(self.main_window, 'settings') else "") or cur_img_dir
 
             self.cur_img_dir = cur_img_dir
             self.cur_xml_dir = cur_xml_dir
@@ -314,6 +313,7 @@ class AutoAnnotateDialog(QDialog):
                     self.combo_save_format.blockSignals(True)
                     self.combo_save_format.setCurrentIndex(idx)
                     self.combo_save_format.blockSignals(False)
+
 
     def on_save_format_changed(self, index: int):
         try:
