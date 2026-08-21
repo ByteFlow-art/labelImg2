@@ -1025,7 +1025,9 @@ class MainWindow(QMainWindow, WindowMixin):
             self.update_label_list_numbers()
 
             if new_selected_row >= 0:
+                self.labelsm.blockSignals(True)
                 self.labelList.selectRow(new_selected_row)
+                self.labelsm.blockSignals(False)
         finally:
             self._is_reordering_table = False
 
@@ -1038,19 +1040,12 @@ class MainWindow(QMainWindow, WindowMixin):
         item0.setBackground(color)
         item1.setBackground(color)
 
-        # 按照 self.labelHist 预设类别的先后顺序插入对应分类区间
-        target_sort_idx = self.get_label_sort_index(shape.label)
-        insert_row = self.labelModel.rowCount()
-        for r in range(self.labelModel.rowCount()):
-            r_item = self.labelModel.item(r, 0)
-            if r_item and self.get_label_sort_index(r_item.text()) > target_sort_idx:
-                insert_row = r
-                break
-
-        self.labelModel.insertRow(insert_row, [item0, item1])
-
+        self.labelModel.appendRow([item0, item1])
         self.ShapeItemDict[shape] = item0
         self.ItemShapeDict[item0] = shape
+
+        # 每次创建新标签（含手动绘制 W/E、复制 Ctrl+D、模型标注等），自动执行全量归类排序
+        self.reorder_label_table()
         self.update_label_list_numbers()
         self.update_stats()
 
@@ -1741,6 +1736,17 @@ class MainWindow(QMainWindow, WindowMixin):
             self.statusBar().showMessage('%s . Annotation will be saved to %s' %
                                          ('Change saved folder', self.defaultSaveDir))
             self.statusBar().show()
+
+            # 修改保存路径后，立即全量重新检索对应路径下的所有标签并刷新右下角文件列表与数字统计
+            if hasattr(self, 'fileModel') and self.fileModel and hasattr(self, 'dirname') and self.dirname:
+                imglist = self.fileModel.stringList()
+                self.fileModel.setStringList(imglist, self.dirname, self.defaultSaveDir)
+                self.calculate_initial_stats()
+                self.fileListView.viewport().update()
+
+            # 重新载入当前正在标注的图片标签
+            if getattr(self, 'filePath', None) and os.path.exists(self.filePath):
+                self.loadFile(self.filePath)
 
     def openAnnotationDialog(self, _value=False):
         if self.filePath is None:

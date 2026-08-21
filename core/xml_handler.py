@@ -86,34 +86,66 @@ class XMLHandler:
         overwrite: bool = True
     ) -> str:
         """
-        生成并保存 Pascal VOC .xml 文件
-
-        :param image_path: 图片完整路径
-        :param objects: 目标标注框列表 [{'class_name': str, 'bbox': [xmin, ymin, xmax, ymax], ...}, ...]
-        :param output_xml_path: 导出的 XML 文件路径
-        :param class_mapping: 类别重命名映射表 {original_name: mapped_name}
-        :param overwrite: 是否覆盖已有 XML 标注（如果为 False，则与已有 XML 内容合并）
-        :return: 保存后的 XML 路径
+        生成并保存 Pascal VOC .xml 文件，完美支持水平矩形框与 OBB 旋转框
+        并在追加合并模式下 100% 保持已有手工标注框的所有属性（名称、位置、尺寸、角度）不发生改变。
         """
         class_mapping = class_mapping or {}
+        from libs.pascal_voc_io import PascalVocWriter, PascalVocReader
 
         # 获取图片实际像素大小
+        width, height, depth = 0, 0, 3
         if os.path.exists(image_path):
-            with Image.open(image_path) as img:
-                width, height = img.size
-                mode = img.mode
-                depth = 3 if mode == 'RGB' else (1 if mode == 'L' else 4)
-        else:
-            width, height, depth = 0, 0, 3
+            try:
+                with Image.open(image_path) as img:
+                    width, height = img.size
+                    mode = img.mode
+                    depth = 3 if mode == 'RGB' else (1 if mode == 'L' else 4)
+            except Exception:
+                pass
 
         folder_name = os.path.basename(os.path.dirname(image_path))
         filename_val = os.path.basename(image_path)
 
-        final_objects = []
+        writer = PascalVocWriter(folder_name, filename_val, (height, width, depth), localImgPath=os.path.abspath(image_path))
+
+        existing_boxes_coords = []
         if not overwrite and os.path.exists(output_xml_path):
             try:
-                _, existing_objs = XMLHandler.read_pascal_voc_xml(output_xml_path)
-                final_objects.extend(existing_objs)
+                reader = PascalVocReader(output_xml_path)
+                # 遍历所有已有标注，原汁原味全部保留
+                for s_info in reader.shapes:
+                    if len(s_info) == 5:
+                        lbl, pts, _, _, diff = s_info
+                        xs = [p[0] for p in pts]
+                        ys = [p[1] for p in pts]
+                        xmin, ymin, xmax, ymax = min(xs), min(ys), max(xs), max(ys)
+                        writer.addBndBox(xmin, ymin, xmax, ymax, lbl, int(diff), None)
+                        existing_boxes_coords.append((lbl, [xmin, ymin, xmax, ymax]))
+                    elif len(s_info) == 6:
+                        lbl, pts, _, _, diff, extra = s_info
+                        xs = [p[0] for p in pts]
+                        ys = [p[1] for p in pts]
+                        xmin, ymin, xmax, ymax = min(xs), min(ys), max(xs), max(ys)
+                        writer.addBndBox(xmin, ymin, xmax, ymax, lbl, int(diff), extra)
+                        existing_boxes_coords.append((lbl, [xmin, ymin, xmax, ymax]))
+                    elif len(s_info) >= 7:
+                        # 旋转框：保留 cx, cy, w, h, angle
+                        lbl = s_info[0]
+                        pts = s_info[1]
+                        diff = s_info[4]
+                        angle = s_info[6] if len(s_info) > 6 else 0.0
+                        extra = s_info[7] if len(s_info) > 7 else None
+                        
+                        xs = [p[0] for p in pts]
+                        ys = [p[1] for p in pts]
+                        xmin, ymin, xmax, ymax = min(xs), min(ys), max(xs), max(ys)
+                        cx = (xmin + xmax) / 2.0
+                        cy = (ymin + ymax) / 2.0
+                        import math
+                        w = math.sqrt((pts[1][0] - pts[0][0])**2 + (pts[1][1] - pts[0][1])**2)
+                        h = math.sqrt((pts[2][0] - pts[1][0])**2 + (pts[2][1] - pts[1][1])**2)
+                        writer.addRotatedBndBox(cx, cy, w, h, angle, lbl, int(diff), extra)
+                        existing_boxes_coords.append((lbl, [xmin, ymin, xmax, ymax]))
             except Exception:
                 pass
 
@@ -129,109 +161,34 @@ class XMLHandler:
             return inter / union if union > 0 else 0.0
 
         for new_obj in objects:
-            new_box = new_obj.get("bbox", [0, 0, 0, 0])
-            new_cls = new_obj.get("class_name", "")
-            # 检查是否与已有目标高度重叠 (IoU > 0.85 且类别相同)
-            is_dup = False
-            for exist_obj in final_objects:
-                exist_box = exist_obj.get("bbox", [0, 0, 0, 0])
-                exist_cls = exist_obj.get("class_name", "")
-                if new_cls == exist_cls and calc_box_iou(new_box, exist_box) > 0.85:
-                    is_dup = True
-                    break
-            if not is_dup:
-                final_objects.append(new_obj)
-
-
-        # 面积排序：面积大的置于底层(先写入XML)，面积小的置于顶层(后写入XML)
-        def get_box_area(obj):
-            try:
-                b = obj.get("bbox", [0, 0, 0, 0])
-                w = max(0.0, float(b[2]) - float(b[0]))
-                h = max(0.0, float(b[3]) - float(b[1]))
-                return w * h
-            except Exception:
-                return 0.0
-        final_objects = sorted(final_objects, key=get_box_area, reverse=True)
-
-        annotation = ET.Element("annotation")
-        
-        folder_elem = ET.SubElement(annotation, "folder")
-        folder_elem.text = folder_name
-
-        filename_elem = ET.SubElement(annotation, "filename")
-        filename_elem.text = filename_val
-
-        path_elem = ET.SubElement(annotation, "path")
-        path_elem.text = os.path.abspath(image_path)
-
-        source_elem = ET.SubElement(annotation, "source")
-        database_elem = ET.SubElement(source_elem, "database")
-        database_elem.text = "Unknown"
-
-        size_elem = ET.SubElement(annotation, "size")
-        w_elem = ET.SubElement(size_elem, "width")
-        w_elem.text = str(width)
-        h_elem = ET.SubElement(size_elem, "height")
-        h_elem.text = str(height)
-        d_elem = ET.SubElement(size_elem, "depth")
-        d_elem.text = str(depth)
-
-        seg_elem = ET.SubElement(annotation, "segmented")
-        seg_elem.text = "0"
-
-        for obj in final_objects:
-            raw_name = obj.get("class_name", "object")
-            # 应用类别名称映射
-            final_name = class_mapping.get(raw_name, raw_name)
-
-            bbox = obj.get("bbox", [0, 0, 0, 0])
+            raw_name = new_obj.get("class_name", "object")
+            final_name = class_mapping.get(raw_name, raw_name) if class_mapping else raw_name
+            bbox = new_obj.get("bbox", [0, 0, 0, 0])
             xmin, ymin, xmax, ymax = bbox[0], bbox[1], bbox[2], bbox[3]
 
-            # 坐标点防边界溢出与整形转换
+            # 坐标限制
             xmin = max(0, min(int(round(xmin)), width))
             ymin = max(0, min(int(round(ymin)), height))
             xmax = max(0, min(int(round(xmax)), width))
             ymax = max(0, min(int(round(ymax)), height))
 
             if xmax <= xmin or ymax <= ymin:
-                continue  # 忽略非法无效框
+                continue
 
-            obj_elem = ET.SubElement(annotation, "object")
-            
-            name_elem = ET.SubElement(obj_elem, "name")
-            name_elem.text = str(final_name)
+            # 若为追加合并模式，检查是否与现有已有标注重合 (IoU > 0.65)
+            if not overwrite:
+                is_dup = False
+                for ex_lbl, ex_bbox in existing_boxes_coords:
+                    if calc_box_iou([xmin, ymin, xmax, ymax], ex_bbox) > 0.65:
+                        is_dup = True
+                        break
+                if is_dup:
+                    continue
 
-            pose_elem = ET.SubElement(obj_elem, "pose")
-            pose_elem.text = obj.get("pose", "Unspecified")
+            writer.addBndBox(xmin, ymin, xmax, ymax, final_name, int(new_obj.get("difficult", 0)), None)
 
-            trunc_elem = ET.SubElement(obj_elem, "truncated")
-            trunc_elem.text = str(obj.get("truncated", 0))
-
-            diff_elem = ET.SubElement(obj_elem, "difficult")
-            diff_elem.text = str(obj.get("difficult", 0))
-
-            bndbox_elem = ET.SubElement(obj_elem, "bndbox")
-            
-            xmin_elem = ET.SubElement(bndbox_elem, "xmin")
-            xmin_elem.text = str(xmin)
-            ymin_elem = ET.SubElement(bndbox_elem, "ymin")
-            ymin_elem.text = str(ymin)
-            xmax_elem = ET.SubElement(bndbox_elem, "xmax")
-            xmax_elem.text = str(xmax)
-            ymax_elem = ET.SubElement(bndbox_elem, "ymax")
-            ymax_elem.text = str(ymax)
-
-        # 格式化 XML 树（美化缩进）
-        rough_string = ET.tostring(annotation, encoding='utf-8')
-        reparsed = minidom.parseString(rough_string)
-        pretty_xml = reparsed.toprettyxml(indent="    ", encoding="utf-8")
-
-        # 确保输出目录存在
         os.makedirs(os.path.dirname(os.path.abspath(output_xml_path)), exist_ok=True)
-        with open(output_xml_path, "wb") as f:
-            f.write(pretty_xml)
-
+        writer.save(output_xml_path)
         return output_xml_path
 
     @staticmethod

@@ -790,49 +790,101 @@ class AutoAnnotateDialog(QDialog):
                 b_copy["class_name"] = final_n
                 filtered_boxes.append(b_copy)
 
+            from libs.shape import Shape
+            from libs.lib import generateColorByText
+
             if is_append:
-                # 1. 优先保存当前画布上的修改，确保最新基准写入 XML
-                if hasattr(self.main_window, 'saveFile') and hasattr(self.main_window, 'dirty') and self.main_window.dirty:
-                    self.main_window.saveFile()
+                # 追加合并模式：
+                # 1. 保持当前画布上已有所有标注框（名称、位置、尺寸、角度）100% 绝不发生改变
+                existing_shapes = list(self.main_window.canvas.shapes) if hasattr(self.main_window, 'canvas') else []
 
-                # 2. 追加合并模式：与现有 XML 进行去重合并后保存
-                XMLHandler.save_pascal_voc_xml(
-                    image_path=img_path,
-                    objects=filtered_boxes,
-                    output_xml_path=xml_path,
-                    class_mapping=mapping,
-                    overwrite=False
-                )
+                def get_shape_rect(s):
+                    xs = [p.x() for p in s.points]
+                    ys = [p.y() for p in s.points]
+                    return [min(xs), min(ys), max(xs), max(ys)]
 
-                # 3. 重新载入图片与已合并的全部标注文件，实现画布与列表完美无缝同步
-                if hasattr(self.main_window, 'defaultSaveDir'):
-                    self.main_window.defaultSaveDir = save_dir
-                if hasattr(self.main_window, 'loadFile'):
-                    self.main_window.loadFile(img_path)
+                def calc_box_iou(b1, b2):
+                    x1 = max(b1[0], b2[0])
+                    y1 = max(b1[1], b2[1])
+                    x2 = min(b1[2], b2[2])
+                    y2 = min(b1[3], b2[3])
+                    inter = max(0.0, x2 - x1) * max(0.0, y2 - y1)
+                    a1 = max(0.0, b1[2] - b1[0]) * max(0.0, b1[3] - b1[1])
+                    a2 = max(0.0, b2[2] - b2[0]) * max(0.0, b2[3] - b2[1])
+                    union = a1 + a2 - inter
+                    return inter / union if union > 0 else 0.0
+
+                existing_rects = [get_shape_rect(s) for s in existing_shapes if len(s.points) >= 2]
+                added_count = 0
+
+                for b in filtered_boxes:
+                    bbox = b.get("bbox", [0, 0, 0, 0])
+                    # 若与已有任何标注框发生明显重叠 (IoU > 0.65)，说明已有人工/现有标注覆盖，跳过
+                    is_covered = False
+                    for ex_r in existing_rects:
+                        if calc_box_iou(bbox, ex_r) > 0.65:
+                            is_covered = True
+                            break
+                    if not is_covered:
+                        xmin, ymin, xmax, ymax = bbox[0], bbox[1], bbox[2], bbox[3]
+                        new_s = Shape(label=b["class_name"])
+                        new_s.addPoint(QPointF(xmin, ymin))
+                        new_s.addPoint(QPointF(xmax, ymin))
+                        new_s.addPoint(QPointF(xmax, ymax))
+                        new_s.addPoint(QPointF(xmin, ymax))
+                        new_s.close()
+                        c = generateColorByText(b["class_name"])
+                        new_s.line_color = c
+                        new_s.fill_color = c
+                        if hasattr(self.main_window, 'drawCorner'):
+                            new_s.alwaysShowCorner = self.main_window.drawCorner.isChecked()
+                        self.main_window.canvas.shapes.append(new_s)
+                        self.main_window.addLabel(new_s)
+                        existing_rects.append([xmin, ymin, xmax, ymax])
+                        added_count += 1
+
+                # 2. 保存并刷新
                 if hasattr(self.main_window, 'setDirty'):
                     self.main_window.setDirty()
+                if hasattr(self.main_window, 'saveFile'):
+                    self.main_window.saveFile()
+                if hasattr(self.main_window, 'canvas'):
+                    self.main_window.canvas.update()
                 if hasattr(self.main_window, 'markFileSavedInList'):
                     self.main_window.markFileSavedInList(img_path)
                 if hasattr(self.main_window, 'update_stats'):
                     self.main_window.update_stats()
 
                 mode_str = "追加合并模式"
-                status_msg = f"单图自动批注完成 [{mode_str}]: 已在原标注基础上追加新检测目标 -> {os.path.basename(xml_path)}"
+                status_msg = f"单图自动批注完成 [{mode_str}]: 已在原标注基础上追加新检测目标 {added_count} 个 (原标注完全保留) -> {os.path.basename(xml_path)}"
             else:
-                # 完全覆盖替换模式
-                XMLHandler.save_pascal_voc_xml(
-                    image_path=img_path,
-                    objects=filtered_boxes,
-                    output_xml_path=xml_path,
-                    class_mapping=mapping,
-                    overwrite=True
-                )
-                if hasattr(self.main_window, 'defaultSaveDir'):
-                    self.main_window.defaultSaveDir = save_dir
-                if hasattr(self.main_window, 'loadFile'):
-                    self.main_window.loadFile(img_path)
+                # 完全覆盖替换模式：清空现有标签，载入模型检测的所有目标
+                if hasattr(self.main_window, 'remAllLabels'):
+                    self.main_window.remAllLabels()
+
+                for b in filtered_boxes:
+                    bbox = b.get("bbox", [0, 0, 0, 0])
+                    xmin, ymin, xmax, ymax = bbox[0], bbox[1], bbox[2], bbox[3]
+                    new_s = Shape(label=b["class_name"])
+                    new_s.addPoint(QPointF(xmin, ymin))
+                    new_s.addPoint(QPointF(xmax, ymin))
+                    new_s.addPoint(QPointF(xmax, ymax))
+                    new_s.addPoint(QPointF(xmin, ymax))
+                    new_s.close()
+                    c = generateColorByText(b["class_name"])
+                    new_s.line_color = c
+                    new_s.fill_color = c
+                    if hasattr(self.main_window, 'drawCorner'):
+                        new_s.alwaysShowCorner = self.main_window.drawCorner.isChecked()
+                    self.main_window.canvas.shapes.append(new_s)
+                    self.main_window.addLabel(new_s)
+
                 if hasattr(self.main_window, 'setDirty'):
                     self.main_window.setDirty()
+                if hasattr(self.main_window, 'saveFile'):
+                    self.main_window.saveFile()
+                if hasattr(self.main_window, 'canvas'):
+                    self.main_window.canvas.update()
                 if hasattr(self.main_window, 'markFileSavedInList'):
                     self.main_window.markFileSavedInList(img_path)
                 if hasattr(self.main_window, 'update_stats'):
@@ -844,7 +896,6 @@ class AutoAnnotateDialog(QDialog):
             if hasattr(self.main_window, 'statusBar') and self.main_window.statusBar():
                 self.main_window.statusBar().showMessage(status_msg, 5000)
             safe_print(f"[Auto-Annotate Terminal] {status_msg}")
-
 
         except Exception as e:
             QMessageBox.critical(self, "批注出错", str(e))

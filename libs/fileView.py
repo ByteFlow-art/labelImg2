@@ -17,32 +17,50 @@ class CFileListModel(QStringListModel):
     def parseOne(self, s, openedDir = None, defaultSaveDir = None):
         candidates = []
         stem = os.path.splitext(os.path.basename(s))[0]
+        
+        # 1. 优先从用户自定义指定的 label dir (defaultSaveDir) 中检索
         if defaultSaveDir is not None and len(defaultSaveDir) and os.path.exists(defaultSaveDir):
             if openedDir is not None and os.path.exists(openedDir):
                 try:
                     relname = os.path.relpath(s, openedDir)
                     relname = os.path.splitext(relname)[0]
                     candidates.append(os.path.join(defaultSaveDir, relname + XML_EXT))
+                    candidates.append(os.path.join(defaultSaveDir, relname + ".txt"))
                 except Exception:
                     pass
             candidates.append(os.path.join(defaultSaveDir, stem + XML_EXT))
+            candidates.append(os.path.join(defaultSaveDir, "Annotations", stem + XML_EXT))
+            candidates.append(os.path.join(defaultSaveDir, stem + ".txt"))
+            candidates.append(os.path.join(defaultSaveDir, "labels", stem + ".txt"))
+
+        # 2. 备选：从图片同级目录或 Annotations 子目录检索
         candidates.append(os.path.splitext(s)[0] + XML_EXT)
         candidates.append(os.path.join(os.path.dirname(s), stem + XML_EXT))
         candidates.append(os.path.join(os.path.dirname(s), "Annotations", stem + XML_EXT))
+        candidates.append(os.path.splitext(s)[0] + ".txt")
+        candidates.append(os.path.join(os.path.dirname(s), "labels", stem + ".txt"))
         parent_d = os.path.dirname(os.path.dirname(s))
         candidates.append(os.path.join(parent_d, "Annotations", stem + XML_EXT))
+        candidates.append(os.path.join(parent_d, "labels", stem + ".txt"))
 
-        found_xml = None
+        found_file = None
         for c in candidates:
             if os.path.exists(c) and os.path.isfile(c):
-                found_xml = c
+                found_file = c
                 break
 
-        if found_xml:
+        if found_file:
             try:
-                tVocParser = PascalVocReader(found_xml)
-                shapes = tVocParser.getShapes()
-                info = [os.path.split(s)[1], len(shapes), False]
+                if found_file.lower().endswith('.xml'):
+                    tVocParser = PascalVocReader(found_file)
+                    shapes = tVocParser.getShapes()
+                    info = [os.path.split(s)[1], len(shapes), False]
+                elif found_file.lower().endswith('.txt'):
+                    with open(found_file, 'r', encoding='utf-8', errors='ignore') as f:
+                        lines = [line.strip() for line in f if line.strip()]
+                    info = [os.path.split(s)[1], len(lines), False]
+                else:
+                    info = [os.path.split(s)[1], 0, False]
             except Exception:
                 info = [os.path.split(s)[1], 0, False]
         else:
