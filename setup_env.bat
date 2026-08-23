@@ -1,17 +1,11 @@
 @echo off
-chcp 65001 >nul
 setlocal enabledelayedexpansion
 
 REM ==============================================================================
-REM   LabelImg2 - 一键全自动环境配置与初始化向导 (Automated Environment Setup)
-REM   适用场景：全新裸机系统、无Python/Conda环境、或重新初始化依赖环境
+REM   LabelImg2 - Automated Environment Setup Wizard
 REM ==============================================================================
 
-echo.
-echo ==============================================================================
-echo            LabelImg2 Next-Gen 计算机视觉标注工作台 - 环境初始化向导
-echo ==============================================================================
-echo.
+title LabelImg2 Environment Setup
 
 set "SCRIPT_DIR=%~dp0"
 cd /d "%SCRIPT_DIR%"
@@ -21,26 +15,51 @@ if /i "%~1"=="--auto" set "IS_AUTO_MODE=1"
 if /i "%~1"=="-y" set "IS_AUTO_MODE=1"
 
 set "PYTHON_EXE="
-set "PIP_INDEX_URL=http://mirrors.aliyun.com/pypi/simple/"
-set "TRUSTED_HOST_ARG=--trusted-host mirrors.aliyun.com --trusted-host pypi.tuna.tsinghua.edu.cn"
+set "PIP_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple"
+set "TRUSTED_HOST=--trusted-host pypi.tuna.tsinghua.edu.cn"
 
-echo [步骤 1/5] 正在检测系统 Python / Conda 运行环境...
+echo.
+echo ==============================================================================
+echo            LabelImg2 Next-Gen - Automated Environment Setup
+echo ==============================================================================
+echo.
 
-REM 1. 检查本地 .venv 虚拟环境
-if exist "%SCRIPT_DIR%\.venv\Scripts\python.exe" (
-    set "PYTHON_EXE=%SCRIPT_DIR%\.venv\Scripts\python.exe"
-    echo [OK] 检测到项目本地虚拟环境: .venv\Scripts\python.exe
+echo [Step 1/5] Detecting Python / Conda runtime environment...
+
+REM 1. Check local virtual environment (.venv)
+if exist "%SCRIPT_DIR%.venv\Scripts\python.exe" (
+    set "PYTHON_EXE=%SCRIPT_DIR%.venv\Scripts\python.exe"
+    echo [OK] Found local virtual environment: .venv\Scripts\python.exe
     goto :INSTALL_DEPS
 )
 
-REM 2. 检查常见 Conda 安装路径与激活脚本
+REM 2. Check direct Conda environment python.exe path
+for %%D in (
+    "C:\D\Conda\miniconda3\envs\labelimg2\python.exe"
+    "%USERPROFILE%\miniconda3\envs\labelimg2\python.exe"
+    "%USERPROFILE%\anaconda3\envs\labelimg2\python.exe"
+    "C:\ProgramData\miniconda3\envs\labelimg2\python.exe"
+    "C:\ProgramData\anaconda3\envs\labelimg2\python.exe"
+    "C:\Miniconda3\envs\labelimg2\python.exe"
+    "C:\Anaconda3\envs\labelimg2\python.exe"
+    "D:\miniconda3\envs\labelimg2\python.exe"
+    "D:\Anaconda3\envs\labelimg2\python.exe"
+) do (
+    if not defined PYTHON_EXE if exist "%%~D" (
+        set "PYTHON_EXE=%%~D"
+        echo [OK] Found Conda environment python: %%~D
+        goto :INSTALL_DEPS
+    )
+)
+
+REM 3. Check Conda activate scripts
 set "CONDA_ACTIVATE="
 for %%P in (
+    "C:\D\Conda\miniconda3\Scripts\activate.bat"
     "%USERPROFILE%\miniconda3\Scripts\activate.bat"
     "%USERPROFILE%\anaconda3\Scripts\activate.bat"
     "C:\ProgramData\miniconda3\Scripts\activate.bat"
     "C:\ProgramData\anaconda3\Scripts\activate.bat"
-    "C:\D\Conda\miniconda3\Scripts\activate.bat"
     "C:\Miniconda3\Scripts\activate.bat"
     "C:\Anaconda3\Scripts\activate.bat"
     "D:\Anaconda3\Scripts\activate.bat"
@@ -49,145 +68,117 @@ for %%P in (
     if not defined CONDA_ACTIVATE if exist "%%~P" set "CONDA_ACTIVATE=%%~P"
 )
 
-if defined CONDA_ACTIVATE (
-    echo [OK] 检测到 Conda 管理器: !CONDA_ACTIVATE!
-    echo [步骤 2/5] 正在激活/创建 Conda 环境: labelimg2 ...
-    call "!CONDA_ACTIVATE!" labelimg2 >nul 2>&1
-    if not errorlevel 1 (
-        for /f "delims=" %%I in ('where python 2^>nul') do (
-            if not defined PYTHON_EXE set "PYTHON_EXE=%%~fI"
-        )
-        if defined PYTHON_EXE (
-            echo [OK] 已成功激活 Conda 环境 [labelimg2]
-            goto :INSTALL_DEPS
+if not defined CONDA_ACTIVATE (
+    for /f "delims=" %%I in ('where conda.bat 2^>nul') do (
+        if not defined CONDA_ACTIVATE (
+            set "CONDA_DIR=%%~dpI"
+            if exist "!CONDA_DIR!activate.bat" set "CONDA_ACTIVATE=!CONDA_DIR!activate.bat"
         )
     )
-    REM 如果没有 labelimg2 环境，尝试创建
-    echo [*] 正在创建新的 Conda 环境 [labelimg2] (Python 3.10)...
+)
+
+if defined CONDA_ACTIVATE (
+    echo [OK] Found Conda package manager: !CONDA_ACTIVATE!
+    echo [Step 2/5] Initializing Conda environment [labelimg2]...
+    call "!CONDA_ACTIVATE!" labelimg2 >nul 2>&1
+    if defined CONDA_PREFIX (
+        set "PYTHON_EXE=!CONDA_PREFIX!\python.exe"
+        echo [OK] Activated existing Conda environment [labelimg2]
+        goto :INSTALL_DEPS
+    )
+    echo [*] Creating new Conda environment [labelimg2] (Python 3.10)...
     call "!CONDA_ACTIVATE!" base
     call conda create -n labelimg2 python=3.10 -y
     call "!CONDA_ACTIVATE!" labelimg2
-    for /f "delims=" %%I in ('where python 2^>nul') do (
-        if not defined PYTHON_EXE set "PYTHON_EXE=%%~fI"
-    )
-    if defined PYTHON_EXE goto :INSTALL_DEPS
-)
-
-REM 3. 检查系统全局 python
-for /f "delims=" %%I in ('where python.exe 2^>nul') do (
-    if not defined PYTHON_EXE set "PYTHON_EXE=%%~fI"
-)
-
-if defined PYTHON_EXE (
-    echo [OK] 检测到系统全局 Python: !PYTHON_EXE!
-    echo [步骤 2/5] 正在创建项目本地隔离虚拟环境 (.venv)...
-    "!PYTHON_EXE!" -m venv "%SCRIPT_DIR%\.venv"
-    if exist "%SCRIPT_DIR%\.venv\Scripts\python.exe" (
-        set "PYTHON_EXE=%SCRIPT_DIR%\.venv\Scripts\python.exe"
-        echo [OK] 本地虚拟环境创建成功: .venv
+    if defined CONDA_PREFIX (
+        set "PYTHON_EXE=!CONDA_PREFIX!\python.exe"
+        echo [OK] Created and activated Conda environment [labelimg2]
         goto :INSTALL_DEPS
     )
 )
 
-REM 4. 若未检测到任何 Python，提供一键便携式 Python 下载安装提示
-echo.
-echo [警告] 未在当前系统中检测到 Python 3.8+ 或 Conda 环境！
-echo.
-
-set "USER_CHOICE=1"
-if "%IS_AUTO_MODE%"=="0" (
-    echo 请选择安装方式：
-    echo   [1] 自动下载并解压便携式 Python 3.10 运行环境 (推荐，纯绿色无污染)
-    echo   [2] 退出并自行安装 Python (https://www.python.org/downloads/)
-    echo.
-    set /p USER_CHOICE="请输入选项 [1 或 2，默认 1]: "
-    if "!USER_CHOICE!"=="" set "USER_CHOICE=1"
-)
-
-if "%USER_CHOICE%"=="1" (
-    echo [*] 正在下载便携式 Python 运行环境，请稍候...
-    powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object System.Net.WebClient).DownloadFile('https://npmmirror.com/mirrors/python/3.10.11/python-3.10.11-embed-amd64.zip', 'python_embed.zip')"
-    if exist "python_embed.zip" (
-        powershell -NoProfile -Command "Expand-Archive -Path 'python_embed.zip' -DestinationPath 'python_embed' -Force"
-        del /f /q python_embed.zip >nul 2>&1
-        echo import site >> python_embed\python310._pth
-        echo [*] 正在下载 pip 引导工具...
-        powershell -NoProfile -Command "(New-Object System.Net.WebClient).DownloadFile('https://bootstrap.pypa.io/get-pip.py', 'python_embed\get-pip.py')"
-        python_embed\python.exe python_embed\get-pip.py --no-warn-script-location -i !PIP_INDEX_URL! !TRUSTED_HOST_ARG!
-        if exist "python_embed\Scripts\pip.exe" (
-            set "PYTHON_EXE=%SCRIPT_DIR%\python_embed\python.exe"
-            echo [OK] 便携式 Python 环境部署成功！
-            goto :INSTALL_DEPS
+REM 4. Check system Python
+for /f "delims=" %%I in ('where python.exe 2^>nul') do (
+    if not defined PYTHON_EXE (
+        set "CANDIDATE=%%~fI"
+        echo !CANDIDATE! | findstr /i /c:"WindowsApps" >nul
+        if errorlevel 1 (
+            set "PYTHON_EXE=!CANDIDATE!"
         )
     )
-    echo [错误] 自动下载便携式 Python 失败，请检查网络连接。
 )
 
+if defined PYTHON_EXE (
+    echo [OK] Found system Python: !PYTHON_EXE!
+    echo [Step 2/5] Creating project virtual environment (.venv)...
+    "!PYTHON_EXE!" -m venv "%SCRIPT_DIR%.venv"
+    if exist "%SCRIPT_DIR%.venv\Scripts\python.exe" (
+        set "PYTHON_EXE=%SCRIPT_DIR%.venv\Scripts\python.exe"
+        echo [OK] Local virtual environment created: .venv
+        goto :INSTALL_DEPS
+    )
+)
+
+REM 5. Fallback: prompt to install Python
 echo.
-echo [提示] 请安装 Python 3.8 ~ 3.11 并将其勾选加入环境变量 PATH，然后重新运行本脚本。
+echo [WARNING] No Python 3.8+ or Conda environment detected on your system.
+echo Please install Python (https://www.python.org/downloads/) and add it to PATH.
+echo.
 if "%IS_AUTO_MODE%"=="0" pause
 exit /b 1
 
 :INSTALL_DEPS
 echo.
-echo [步骤 3/5] 正在升级 pip 并配置国内极速镜像源...
-"!PYTHON_EXE!" -m pip install --upgrade pip -i !PIP_INDEX_URL! !TRUSTED_HOST_ARG! >nul 2>&1
+echo [Step 3/5] Upgrading pip with high-speed mirror...
+"!PYTHON_EXE!" -m pip install --upgrade pip -i !PIP_INDEX! !TRUSTED_HOST! >nul 2>&1
 
 echo.
-echo [步骤 4/5] 正在安装核心依赖包 (PyQt5, Ultralytics, PyTorch, OpenCV, lxml 等)...
-echo [*] 使用高速镜像源安装中，请稍候...
-"!PYTHON_EXE!" -m pip install -r requirements.txt -i !PIP_INDEX_URL! !TRUSTED_HOST_ARG!
+echo [Step 4/5] Installing core dependencies (PyQt5, Ultralytics, PyTorch, OpenCV, lxml)...
+"!PYTHON_EXE!" -m pip install -r requirements.txt -i !PIP_INDEX! !TRUSTED_HOST!
 
 if errorlevel 1 (
     echo.
-    echo [重试] 尝试备用清华源安装...
-    "!PYTHON_EXE!" -m pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn
+    echo [Retry] Retrying with Aliyun mirror...
+    "!PYTHON_EXE!" -m pip install -r requirements.txt -i http://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
 )
 
 echo.
-echo [步骤 5/5] 正在验证 LabelImg2 运行环境完整性...
-"!PYTHON_EXE!" -c "import PyQt5, torch, ultralytics, cv2, PIL, lxml, yaml; print('[OK] 所有核心依赖库加载验证通过！')"
+echo [Step 5/5] Verifying LabelImg2 runtime dependencies...
+"!PYTHON_EXE!" -c "import PyQt5, torch, ultralytics, cv2, PIL, lxml, yaml; print('[OK] All dependencies successfully verified!')"
 
 if errorlevel 1 (
     echo.
-    echo [警告] 部分依赖加载异常，请检查上述错误信息。
+    echo [WARNING] Some dependencies failed to load. Please check error output above.
     if "%IS_AUTO_MODE%"=="0" pause
     exit /b 1
 )
 
-REM 自动创建桌面快捷方式（使用专属 App 图标）
-set "ICON_FILE=%SCRIPT_DIR%img\labelImg2.ico"
-set "TARGET_FILE=%SCRIPT_DIR%Start_LabelImg2.bat"
-if exist "%SCRIPT_DIR%dist\LabelImg2\LabelImg2.exe" set "TARGET_FILE=%SCRIPT_DIR%dist\LabelImg2\LabelImg2.exe"
+REM Create Desktop Shortcut
+set "TARGET_BAT=%SCRIPT_DIR%Start_LabelImg2.bat"
+if exist "%SCRIPT_DIR%img\app.ico" (
+    set "ICON_FILE=%SCRIPT_DIR%img\app.ico"
+) else (
+    set "ICON_FILE=%SCRIPT_DIR%img\labelImg2.ico"
+)
 
-powershell -NoProfile -Command ^
-    "$WshShell = New-Object -ComObject WScript.Shell; " ^
-    "$Desktop = [Environment]::GetFolderPath('Desktop'); " ^
-    "$Shortcut = $WshShell.CreateShortcut($Desktop + '\LabelImg2.lnk'); " ^
-    "$Shortcut.TargetPath = '%TARGET_FILE%'; " ^
-    "$Shortcut.WorkingDirectory = '%SCRIPT_DIR%'; " ^
-    "$Shortcut.IconLocation = '%ICON_FILE%,0'; " ^
-    "$Shortcut.Description = 'LabelImg2 Next-Gen - AI 智能计算机视觉标注工作台'; " ^
-    "$Shortcut.Save();" >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $d = [Environment]::GetFolderPath('Desktop'); $s = $ws.CreateShortcut($d + '\LabelImg2.lnk'); $s.TargetPath = $env:TARGET_BAT; $s.WorkingDirectory = '%SCRIPT_DIR%'; $s.IconLocation = $env:ICON_FILE + ',0'; $s.Description = 'LabelImg2 Next-Gen'; $s.Save();" >nul 2>&1
 
 echo.
 echo ==============================================================================
-echo   [成功] LabelImg2 环境部署已全部完成！
-echo   已在您的桌面上生成了带有专属 App 图标的 [LabelImg2] 快捷方式。
-echo   现在您可以直接双击桌面图标或 [Start_LabelImg2.bat] 启动标注工作台。
+echo   [SUCCESS] LabelImg2 environment deployment complete!
+echo   A desktop shortcut [LabelImg2] has been created on your Desktop.
+echo   You can now launch LabelImg2 via desktop shortcut or Start_LabelImg2.bat.
 echo ==============================================================================
 echo.
 
 if "%IS_AUTO_MODE%"=="1" exit /b 0
 
-REM 询问是否立即启动
-set /p LAUNCH_NOW="是否立即启动 LabelImg2？(Y/N，默认 Y): "
+set "LAUNCH_NOW=Y"
+set /p LAUNCH_NOW="Launch LabelImg2 now? (Y/N, default Y): "
 if /i "%LAUNCH_NOW%"=="" set "LAUNCH_NOW=Y"
 if /i "%LAUNCH_NOW%"=="Y" (
-    start "" "%SCRIPT_DIR%\Start_LabelImg2.bat"
+    start "" "%SCRIPT_DIR%Start_LabelImg2.bat"
 )
 
 endlocal
 exit /b 0
-
-
