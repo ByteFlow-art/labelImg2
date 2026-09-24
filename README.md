@@ -76,7 +76,36 @@
 2. **一键极速启动**：在项目根目录下，直接双击 **`Start_LabelImg2.bat`**，启动脚本将自动检测依赖环境（首次运行全自动完成环境配置）并秒级拉起工作台；
 3. **生成桌面图标**：双击运行 `Create_Desktop_Shortcut.bat`，即可一键在当前 Windows 桌面上创建带专属应用图标的启动快捷方式。
 
-### 2.3 途径三：手动命令行环境搭建 (Conda / UV / Pip)
+### 2.3 途径三：Linux 系统一键安装与快速启动 (Ubuntu / Debian / CentOS / Arch 等)
+
+本项目原生提供全套 Linux 运行脚本与独立自解压安装程序：
+
+#### 方法 A：使用独立自解压安装包 (.run)
+1. 从 [Releases 页面](https://github.com/ByteFlow-art/labelImg2/releases) 下载 `LabelImg2_Linux_Setup_v1.0.0.run`；
+2. 在终端赋予执行权限并运行：
+   ```bash
+   chmod +x LabelImg2_Linux_Setup_v1.0.0.run
+   ./LabelImg2_Linux_Setup_v1.0.0.run
+   ```
+   安装向导将全自动解压至指定目录、部署 Python 隔离环境、配置依赖并在系统应用菜单与桌面生成启动图标。
+
+#### 方法 B：源码克隆一键初始化 (.sh)
+1. 克隆项目并进入根目录：
+   ```bash
+   git clone https://github.com/ByteFlow-art/labelImg2.git
+   cd labelImg2
+   ```
+2. 运行自动化配置向导：
+   ```bash
+   chmod +x setup_linux.sh Start_LabelImg2.sh
+   ./setup_linux.sh
+   ```
+3. **日常启动**：
+   * 终端任意位置输入：`labelimg2`
+   * 或在项目根目录下执行：`./Start_LabelImg2.sh`
+   * 或在系统应用程序菜单中搜索 **LabelImg2** 点击图标启动。
+
+### 2.4 途径四：手动命令行环境搭建 (Conda / UV / Pip)
 
 ```bash
 # 1. 创建并激活 Python 虚拟环境 (推荐 Python 3.8 ~ 3.11)

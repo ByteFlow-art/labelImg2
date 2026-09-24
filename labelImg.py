@@ -2126,7 +2126,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.settings.reset()
         self.close()
         proc = QProcess()
-        proc.startDetached(os.path.abspath(__file__))
+        proc.startDetached(sys.executable, [os.path.abspath(__file__)])
 
     def mayContinue(self):
         return not (self.dirty and not self.discardChangesDialog())

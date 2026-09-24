@@ -55,9 +55,11 @@ runs/val/
 # Packaging & Build Scripts (Local Only)
 build_exe.*
 build_installer.*
+build_linux_installer.*
 installer_gui.py
 version_info.txt
 app_payload.zip
+*.run
 *.lnk
 *.zip
 scratch/
