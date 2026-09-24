@@ -56,10 +56,12 @@ runs/val/
 build_exe.*
 build_installer.*
 build_linux_installer.*
+build_deb_package.*
 installer_gui.py
 version_info.txt
 app_payload.zip
 *.run
+*.deb
 *.lnk
 *.zip
 scratch/

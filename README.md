@@ -78,18 +78,28 @@
 
 ### 2.3 途径三：Linux 系统一键安装与快速启动 (Ubuntu / Debian / CentOS / Arch 等)
 
-本项目原生提供全套 Linux 运行脚本与独立自解压安装程序：
+本项目原生提供标准 Debian/Ubuntu 安装包 (`.deb`) 以及跨全发行版通用的自解压安装程序 (`.run`)：
 
-#### 方法 A：使用独立自解压安装包 (.run)
+#### 方法 A：标准 Debian / Ubuntu 软件包 (.deb) [推荐 Ubuntu / Debian / Mint / Deepin 用户]
+1. 从 [Releases 页面](https://github.com/ByteFlow-art/labelImg2/releases) 下载 `labelimg2_1.0.0_all.deb`；
+2. **图形化安装**：直接双击 `.deb` 文件，在系统“应用中心 / GDebi”中点击“安装”；
+3. **命令行一键安装**：
+   ```bash
+   sudo apt install ./labelimg2_1.0.0_all.deb
+   ```
+   安装程序将全自动部署至 `/opt/labelimg2`，并在系统 `/usr/bin/labelimg2` 注册全局命令、在系统应用程序菜单与桌面生成官方专属图标！
+4. **卸载**：随时可通过 `sudo apt remove labelimg2` 干净卸载。
+
+#### 方法 B：通用自解压安装包 (.run) [推荐 CentOS / Fedora / Arch / openSUSE 等其他发行版]
 1. 从 [Releases 页面](https://github.com/ByteFlow-art/labelImg2/releases) 下载 `LabelImg2_Linux_Setup_v1.0.0.run`；
 2. 在终端赋予执行权限并运行：
    ```bash
    chmod +x LabelImg2_Linux_Setup_v1.0.0.run
    ./LabelImg2_Linux_Setup_v1.0.0.run
    ```
-   安装向导将全自动解压至指定目录、部署 Python 隔离环境、配置依赖并在系统应用菜单与桌面生成启动图标。
+   安装向导将全自动解压至指定目录、部署环境并在桌面生成启动图标。
 
-#### 方法 B：源码克隆一键初始化 (.sh)
+#### 方法 C：源码克隆一键初始化 (.sh)
 1. 克隆项目并进入根目录：
    ```bash
    git clone https://github.com/ByteFlow-art/labelImg2.git
