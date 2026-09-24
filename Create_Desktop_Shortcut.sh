@@ -18,7 +18,19 @@ DESKTOP_DIR="$(xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Desktop")"
 APPS_DIR="$HOME/.local/share/applications"
 mkdir -p "$APPS_DIR"
 
-DESKTOP_FILE="$APPS_DIR/labelimg2.desktop"
+# Register icon in FreeDesktop standard user icon paths
+ICON_DIR_256="$HOME/.local/share/icons/hicolor/256x256/apps"
+PIXMAPS_DIR="$HOME/.local/share/pixmaps"
+mkdir -p "$ICON_DIR_256" "$PIXMAPS_DIR"
+
+if [ -f "$ICON_PATH" ]; then
+    cp "$ICON_PATH" "$ICON_DIR_256/labelimg2.png" 2>/dev/null || true
+    cp "$ICON_PATH" "$PIXMAPS_DIR/labelimg2.png" 2>/dev/null || true
+fi
+
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
+fi
 
 cat <<EOF > "$DESKTOP_FILE"
 [Desktop Entry]

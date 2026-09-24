@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=LabelImg2 Installer
+GenericName=Install LabelImg2
+Comment=Install LabelImg2 Next-Gen Image Annotation and YOLO Training Workbench
+Exec=bash -c 'DIR="$(dirname "%k")"; cd "$DIR" && chmod +x ./setup_linux.sh ./Start_LabelImg2.sh ./Create_Desktop_Shortcut.sh && ./setup_linux.sh'
+Icon=labelimg2
+Terminal=true
+Categories=Development;Graphics;Science;
+StartupNotify=true
