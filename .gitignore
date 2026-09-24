@@ -39,10 +39,7 @@ python_embed/
 python_embed.zip
 
 # Model Training & Inference Artifacts (Ultralytics / YOLO)
-runs/detect/
-runs/train/
-runs/test/
-runs/val/
+runs/
 *.pt.bak
 
 # IDE & Editor Settings

@@ -19,7 +19,7 @@
 
 <br>
 
-<img src="界面预览.png" alt="LabelImg2 界面预览" width="100%" />
+<img src="img/preview.png" alt="LabelImg2 界面预览" width="100%" />
 
 </div>
 
