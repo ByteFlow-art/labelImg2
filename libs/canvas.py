@@ -922,10 +922,25 @@ class Canvas(QWidget):
         """根据面积从大到小对 shapes 排序: 面积大的在底层(列表前方先画)，面积小的在顶层(列表后方后画且先命中点击)"""
         def get_shape_area(s):
             try:
-                rect = s.boundingRect()
-                return rect.width() * rect.height()
+                if len(s.points) == 4:
+                    import math
+                    d1 = math.hypot(s.points[0].x() - s.points[1].x(), s.points[0].y() - s.points[1].y())
+                    d2 = math.hypot(s.points[1].x() - s.points[2].x(), s.points[1].y() - s.points[2].y())
+                    return d1 * d2
+                elif len(s.points) >= 3:
+                    area = 0.0
+                    n = len(s.points)
+                    for i in range(n):
+                        j = (i + 1) % n
+                        area += s.points[i].x() * s.points[j].y()
+                        area -= s.points[j].x() * s.points[i].y()
+                    return abs(area) / 2.0
+                elif len(s.points) >= 2:
+                    rect = s.boundingRect()
+                    return rect.width() * rect.height()
             except Exception:
-                return 0.0
+                pass
+            return 0.0
         self.shapes.sort(key=get_shape_area, reverse=True)
         self.update()
 

@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 Windows 资源管理器实时文件夹排序动态同步模块
 1. 毫秒级探测 Windows Explorer 当前打开该文件夹窗口的真实实时排序列与正倒序（SortColumns）
@@ -91,8 +91,8 @@ def get_live_explorer_sort_columns(folder_path):
     norm_path = os.path.abspath(folder_path)
     now = time.time()
 
-    # 缓存 300ms 避免过度频繁执行子进程
-    if norm_path in _LAST_QUERY_RESULT and (now - _LAST_QUERY_TIME) < 0.3:
+    # 缓存 1.5 秒避免频繁执行子进程
+    if norm_path in _LAST_QUERY_RESULT and (now - _LAST_QUERY_TIME) < 1.5:
         return _LAST_QUERY_RESULT[norm_path]
 
     target_txt = os.path.join(tempfile.gettempdir(), "_labelimg2_target_folder.txt")
@@ -112,7 +112,7 @@ def get_live_explorer_sort_columns(folder_path):
             text=True,
             encoding="gbk",
             errors="replace",
-            timeout=1,
+            timeout=0.4,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
         )
         sort_col = res.stdout.strip()
@@ -120,6 +120,8 @@ def get_live_explorer_sort_columns(folder_path):
         _LAST_QUERY_RESULT[norm_path] = sort_col
         return sort_col
     except Exception:
+        globals()['_LAST_QUERY_TIME'] = now
+        _LAST_QUERY_RESULT[norm_path] = ""
         return ""
 
 

@@ -560,12 +560,6 @@ class MainWindow(QMainWindow, WindowMixin):
         # 捕获全局按键事件，确保 Q 与 Delete 完全一致且不被多重 QShortcut 冲突屏蔽
         QApplication.instance().installEventFilter(self)
 
-        # 实时动态检测并同步 Windows 资源管理器文件夹排序变更
-        self.folder_sort_timer = QTimer(self)
-        self.folder_sort_timer.setInterval(800)
-        self.folder_sort_timer.timeout.connect(self.check_folder_sort_update)
-        self.folder_sort_timer.start()
-
     def noShapes(self):
         return not self.ItemShapeDict
 
@@ -607,6 +601,25 @@ class MainWindow(QMainWindow, WindowMixin):
                     self.auto_annotate_dialog.combo_save_format.blockSignals(True)
                     self.auto_annotate_dialog.combo_save_format.setCurrentIndex(idx)
                     self.auto_annotate_dialog.combo_save_format.blockSignals(False)
+
+        # 若当前已打开图片，检测该格式下是否已有独立标注文件；若有则无缝即时载入
+        if hasattr(self, 'filePath') and self.filePath and os.path.exists(self.filePath):
+            from libs.annotation_io import find_annotation_file, read_annotations
+            anno_file, detected_fmt = find_annotation_file(
+                image_path=self.filePath,
+                preferred_format=self.save_format,
+                save_dir=self.defaultSaveDir,
+                image_dir=self.dirname
+            )
+            if anno_file and detected_fmt == self.save_format:
+                img_shape = (self.image.height(), self.image.width(), 3) if (hasattr(self, 'image') and self.image) else (1, 1, 3)
+                shapes = read_annotations(anno_file, detected_fmt, img_shape, getattr(self, 'labelHist', None), self.filePath)
+                if shapes:
+                    self.resetState()
+                    self.loadLabels(shapes)
+                    self.setClean()
+                    self.canvas.update()
+                    self.update_stats()
 
     def markFileSavedInList(self, file_path_or_idx, shape_count=None):
         """将保存/修改过的文件在右下角 File List 中高亮标为荧光绿"""
@@ -814,9 +827,10 @@ class MainWindow(QMainWindow, WindowMixin):
 
     def toggleExtraEditing(self, state):
         index = self.labelsm.currentIndex()
-        #print("ExtraEditing", self.sender())
-        editindex = self.labelModel.index(index.row(), 1)
-        self.labelList.edit(editindex)
+        if index.isValid() and index.row() >= 0:
+            editindex = self.labelModel.index(index.row(), 1)
+            if self.labelList.state() != QAbstractItemView.EditingState:
+                self.labelList.edit(editindex)
 
     def updateFileMenu(self):
         currFilePath = self.filePath
@@ -970,9 +984,12 @@ class MainWindow(QMainWindow, WindowMixin):
             item0 = self.ShapeItemDict[shape]
             index = self.labelModel.indexFromItem(item0)
             if index.isValid():
-                label_idx = self.labelModel.index(index.row(), 0)
+                self.labelsm.blockSignals(True)
                 self.labelList.selectRow(index.row())
-                self.labelList.edit(label_idx)
+                self.labelsm.blockSignals(False)
+                label_idx = self.labelModel.index(index.row(), 0)
+                if self.labelList.state() != QAbstractItemView.EditingState:
+                    self.labelList.edit(label_idx)
 
     def get_label_sort_index(self, label):
         """根据 self.labelHist 预设类别的先后顺序计算类别排序权重"""
@@ -1162,15 +1179,24 @@ class MainWindow(QMainWindow, WindowMixin):
                         extra_text = s.extra_label)
 
         shapes = [format_shape(shape) for shape in self.canvas.shapes]
-        # Can add differrent annotation formats here
+        from libs.annotation_io import write_annotations, get_format_ext
         try:
-            if annotationFilePath[-4:] != ".xml":
-                annotationFilePath += XML_EXT
-            log_terminal(f"[Shortcut Ctrl+S Terminal] 标注数据已成功保存 XML: {annotationFilePath}")
-            self.labelFile.savePascalVocFormat(annotationFilePath, shapes, self.filePath, self.imageData,
-                                                self.lineColor.getRgb(), self.fillColor.getRgb())
+            ext = get_format_ext(self.save_format)
+            base, _ = os.path.splitext(annotationFilePath)
+            final_path = base + ext
+
+            img_shape = (self.image.height(), self.image.width(), 3) if self.image else (1, 1, 3)
+            saved_file = write_annotations(
+                target_file=final_path,
+                format_name=self.save_format,
+                shapes=shapes,
+                image_path=self.filePath,
+                image_shape=img_shape,
+                class_list=getattr(self, 'labelHist', None)
+            )
+            log_terminal(f"[Shortcut Ctrl+S Terminal] 标注数据已成功保存 [{self.save_format}]: {saved_file}")
             return True
-        except LabelFileError as e:
+        except Exception as e:
             self.errorMessage(u'Error saving label data', u'<b>%s</b>' % e)
             return False
 
@@ -1240,16 +1266,21 @@ class MainWindow(QMainWindow, WindowMixin):
 
             self.setDirty()
 
-            # 默认选中新建的标注框，并自动展开右侧对应的标签下拉选项
+            # 默认选中新建的标注框，并在归类完成后安全展开右侧对应的标签下拉选项
             self.canvas.selectShape(shape)
-            if shape in self.ShapeItemDict:
-                item0 = self.ShapeItemDict[shape]
-                index = self.labelModel.indexFromItem(item0)
-                if index.isValid():
-                    row = index.row()
-                    self.labelList.selectRow(row)
-                    col0_idx = self.labelModel.index(row, 0)
-                    QTimer.singleShot(60, lambda idx=col0_idx: self.labelList.edit(idx))
+            def expand_new_shape_label():
+                if shape in self.ShapeItemDict:
+                    item0 = self.ShapeItemDict[shape]
+                    index = self.labelModel.indexFromItem(item0)
+                    if index.isValid():
+                        row = index.row()
+                        self.labelsm.blockSignals(True)
+                        self.labelList.selectRow(row)
+                        self.labelsm.blockSignals(False)
+                        col0_idx = self.labelModel.index(row, 0)
+                        if self.labelList.state() != QAbstractItemView.EditingState:
+                            self.labelList.edit(col0_idx)
+            QTimer.singleShot(60, expand_new_shape_label)
         else:
             # self.canvas.undoLastLine()
             self.canvas.resetAllLines()
@@ -1394,27 +1425,31 @@ class MainWindow(QMainWindow, WindowMixin):
             self.addRecentFile(self.filePath)
             self.toggleActions(True)
 
-            # Label xml file and show bound box according to its filename
-            vocReader = None
-            if self.defaultSaveDir is not None:
-                if self.dirname is not None and os.path.exists(self.dirname):
-                    relname = os.path.relpath(self.filePath, self.dirname)
-                    relname = os.path.splitext(relname)[0]
-                    # TODO: defaultSaveDir changed to another dir need mkdir for subdir
-                    xmlPath = os.path.join(self.defaultSaveDir, relname + XML_EXT)
-                else:
-                    xmlPath = os.path.splitext(filePath)[0] + XML_EXT
+            # 多格式兼容检索与载入标注 (支持 Pascal VOC XML, YOLO TXT, Create ML JSON, COCO JSON)
+            from libs.annotation_io import find_annotation_file, read_annotations
+            img_shape = (self.image.height(), self.image.width(), 3) if (hasattr(self, 'image') and self.image) else (1, 1, 3)
+            anno_file, detected_fmt = find_annotation_file(
+                image_path=self.filePath,
+                preferred_format=self.save_format,
+                save_dir=self.defaultSaveDir,
+                image_dir=self.dirname
+            )
+
+            if anno_file and os.path.isfile(anno_file):
+                loaded_shapes = read_annotations(
+                    file_path=anno_file,
+                    format_name=detected_fmt,
+                    image_shape=img_shape,
+                    class_list=getattr(self, 'labelHist', None),
+                    image_path=self.filePath
+                )
+                if loaded_shapes:
+                    self.loadLabels(loaded_shapes)
+                self.current_annotation_file = anno_file
+                self.current_annotation_format = detected_fmt
             else:
-                xmlPath = os.path.splitext(filePath)[0] + XML_EXT
-
-            if os.path.isfile(xmlPath):
-                vocReader = self.loadPascalXMLByFilename(xmlPath)
-
-            if vocReader is not None:
-                vocWidth, vocHeight, _ = vocReader.getSize()
-                if self.image.width() != vocWidth or self.image.height() != vocHeight:
-                    #self.errorMessage("Image info not matched", "The width or height of annotation file is not matched with that of the image")
-                    self.saveFile()
+                self.current_annotation_file = None
+                self.current_annotation_format = None
 
             # 实时同步并高亮刷新右下侧照片列表中的选中状态与序号统计
             if hasattr(self, 'fileModel') and self.fileModel and self.fileModel.rowCount() > 0:
@@ -2028,12 +2063,14 @@ class MainWindow(QMainWindow, WindowMixin):
             imgFileName = os.path.basename(self.filePath)
             savedFileName = os.path.splitext(imgFileName)[0]
             savedPath = os.path.join(imgFileDir, savedFileName)
-            if self.labelFile is None:
-                savedPath = self.saveFileDialog()
-        if not savedPath.endswith(XML_EXT):
-            savedPath += XML_EXT
-        if os.path.exists(savedPath):
-            os.remove(savedPath)
+        base_path = os.path.splitext(savedPath)[0]
+        for ext in ('.xml', '.txt', '.json'):
+            target_p = base_path + ext
+            if os.path.exists(target_p):
+                try:
+                    os.remove(target_p)
+                except Exception:
+                    pass
 
     def saveFileAndRenderList(self, _value=False):
         self.saveFile(_value=_value)
@@ -2045,11 +2082,13 @@ class MainWindow(QMainWindow, WindowMixin):
         self._saveFile(self.saveFileDialog())
 
     def saveFileDialog(self):
+        from libs.annotation_io import get_format_ext
+        ext = get_format_ext(self.save_format)
         caption = '%s - Choose File' % __appname__
-        filters = 'File (*%s)' % LabelFile.suffix
+        filters = f'Annotation File (*{ext})'
         openDialogPath = self.currentPath()
         dlg = QFileDialog(self, caption, openDialogPath, filters)
-        dlg.setDefaultSuffix(LabelFile.suffix[1:])
+        dlg.setDefaultSuffix(ext[1:])
         dlg.setAcceptMode(QFileDialog.AcceptSave)
         filenameWithoutExtension = os.path.splitext(self.filePath)[0]
         dlg.selectFile(filenameWithoutExtension)

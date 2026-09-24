@@ -790,6 +790,12 @@ class AutoAnnotateDialog(QDialog):
                 b_copy["class_name"] = final_n
                 filtered_boxes.append(b_copy)
 
+            # 按面积从大到小对预测框预排序，确保大框在底层、小框在顶层
+            def get_box_area(b):
+                bbox = b.get("bbox", [0, 0, 0, 0])
+                return max(0.0, bbox[2] - bbox[0]) * max(0.0, bbox[3] - bbox[1])
+            filtered_boxes = sorted(filtered_boxes, key=get_box_area, reverse=True)
+
             from libs.shape import Shape
             from libs.lib import generateColorByText
 
@@ -843,7 +849,11 @@ class AutoAnnotateDialog(QDialog):
                         existing_rects.append([xmin, ymin, xmax, ymax])
                         added_count += 1
 
-                # 2. 保存并刷新
+                # 2. 全画布按面积从大到小严格层级重排 (小面积在上层，大面积在底层)
+                if hasattr(self.main_window, 'canvas'):
+                    self.main_window.canvas.reorderShapesByArea()
+
+                # 3. 保存并刷新
                 if hasattr(self.main_window, 'setDirty'):
                     self.main_window.setDirty()
                 if hasattr(self.main_window, 'saveFile'):
@@ -878,6 +888,10 @@ class AutoAnnotateDialog(QDialog):
                         new_s.alwaysShowCorner = self.main_window.drawCorner.isChecked()
                     self.main_window.canvas.shapes.append(new_s)
                     self.main_window.addLabel(new_s)
+
+                # 全画布按面积从大到小严格层级重排 (小面积在上层，大面积在底层)
+                if hasattr(self.main_window, 'canvas'):
+                    self.main_window.canvas.reorderShapesByArea()
 
                 if hasattr(self.main_window, 'setDirty'):
                     self.main_window.setDirty()

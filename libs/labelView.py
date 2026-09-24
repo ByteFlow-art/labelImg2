@@ -62,17 +62,12 @@ class CComboBoxDelegate(QStyledItemDelegate):
 
     def createEditor(self, parent, option, index):
         editor = CLabelComboBox(parent)
+        editor.blockSignals(True)
         for idx, i in enumerate(self.listItem):
             item_text = str(i)
             # 在展开的下拉菜单选项前增加 1. 2. 序号标记，方便区分选择
             display_text = f"{idx + 1}. {item_text}" if not re.match(r'^\d+\.\s*', item_text) else item_text
             editor.addItem(display_text, item_text)
-        editor.currentIndexChanged.connect(self.editorIndexChanged)
-
-        # 监听弹出列表视图上的快捷键，确保 Q 键随时一击必删
-        if editor.view():
-            self._popup_filter = PopupKeyFilter(editor, editor.view())
-            editor.view().installEventFilter(self._popup_filter)
         
         curr_text = index.model().data(index, Qt.EditRole)
         tindex = -1
@@ -84,13 +79,22 @@ class CComboBoxDelegate(QStyledItemDelegate):
             editor.setCurrentIndex(tindex)
         else:
             editor.setCurrentIndex(0)
+        editor.blockSignals(False)
+
+        # 仅在用户主动点击选择下拉列表选项时触发提交与关闭
+        editor.activated.connect(self.on_activated)
+
+        # 监听弹出列表视图上的快捷键，确保 Q 键随时一击必删
+        if editor.view():
+            self._popup_filter = PopupKeyFilter(editor, editor.view())
+            editor.view().installEventFilter(self._popup_filter)
 
         # 单击选中框时安全展开下拉列表 (使用 weakref 避免删除 C++ 对象引起 RuntimeError)
         w_editor = weakref.ref(editor)
         def popup_safely():
             try:
                 ed = w_editor()
-                if ed is not None:
+                if ed is not None and ed.isVisible():
                     ed.showPopup()
             except (RuntimeError, AttributeError):
                 pass
@@ -98,8 +102,8 @@ class CComboBoxDelegate(QStyledItemDelegate):
         QTimer.singleShot(50, popup_safely)
         return editor
 
-    # commit data early, prevent to loss data when clicking OpenNextImg
-    def editorIndexChanged(self, index):
+    # 用户主动选择选项后安全提交并关闭编辑器
+    def on_activated(self, index):
         try:
             combox = self.sender()
             if combox is not None:
@@ -284,7 +288,8 @@ class CLabelView(QTableView):
     def on_table_clicked(self, index):
         # 单击右侧表格对应项时直接展开标签下拉选择栏，无需双击
         if index.isValid() and index.column() == 0:
-            self.edit(index)
+            if self.state() != QAbstractItemView.EditingState:
+                self.edit(index)
 
     def extraChanged(self, str):
         self.extraEditing.emit(self.sm.currentIndex(), str)

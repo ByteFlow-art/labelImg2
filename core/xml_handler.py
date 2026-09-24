@@ -160,7 +160,17 @@ class XMLHandler:
             union = a1 + a2 - inter
             return inter / union if union > 0 else 0.0
 
-        for new_obj in objects:
+        # 按面积从大到小排序，确保大框在底层、小框在顶层
+        def get_obj_area(o):
+            try:
+                bbox = o.get("bbox", [0, 0, 0, 0])
+                return max(0.0, bbox[2] - bbox[0]) * max(0.0, bbox[3] - bbox[1])
+            except Exception:
+                return 0.0
+
+        sorted_objects = sorted(objects, key=get_obj_area, reverse=True)
+
+        for new_obj in sorted_objects:
             raw_name = new_obj.get("class_name", "object")
             final_name = class_mapping.get(raw_name, raw_name) if class_mapping else raw_name
             bbox = new_obj.get("bbox", [0, 0, 0, 0])
