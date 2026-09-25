@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+<style type="text/css">
+	.st0{fill:#231F20;}
+</style>
+<g>
+	<!-- Folder Contour matching icon_images_dir.svg -->
+	<path class="st0" d="M65.9,30l17.1,17.1l2.9,2.9H90h60v90H10V30H65.9 M70,20H5.7C2.6,20,0,22.6,0,25.7v118.6c0,3.2,2.6,5.7,5.7,5.7h148.6c3.2,0,5.7-2.6,5.7-5.7V45.7c0-3.2-2.6-5.7-5.7-5.7H90L70,20L70,20z"/>
+	<!-- History Clock & Circular Arrow Emblem inside folder -->
+	<path class="st0" d="M80,62c-17.7,0-32,14.3-32,32s14.3,32,32,32s32-14.3,32-32S97.7,62,80,62z M80,118c-13.3,0-24-10.7-24-24s10.7-24,24-24s24,10.7,24,24S93.3,118,80,118z"/>
+	<!-- Clock hands (9:00 / 12:00) -->
+	<path class="st0" d="M76,74h8v20h-8V74z M64,90h16v8H64V90z"/>
+	<!-- Clock Center Dot -->
+	<circle class="st0" cx="80" cy="94" r="5"/>
+	<!-- Circular Rewind / History Pointer -->
+	<path class="st0" d="M52,78l12-14H46l-8,16l14-2Z"/>
+</g>
+</svg>

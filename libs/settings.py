@@ -31,10 +31,14 @@ class Settings(object):
 
     def load(self):
         if os.path.exists(self.path):
-            with open(self.path, 'rb') as f:
-                self.data = pickle.load(f)
-                #self.data = json.load(f)
-                return True
+            try:
+                with open(self.path, 'rb') as f:
+                    self.data = pickle.load(f)
+                    return True
+            except Exception as e:
+                print(f"[Settings] Error loading settings from {self.path}: {e}")
+                self.data = {}
+                return False
         return False
 
     def reset(self):

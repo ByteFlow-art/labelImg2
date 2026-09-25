@@ -30,10 +30,11 @@
 ### v1.0.0 正式发布版 (Current Stable Release)
 - **版本号**：`v1.0.0`
 - **发布日期**：2026-08-19
-- **运行环境**：Windows 10 / Windows 11 (x64)，支持 NVIDIA GPU CUDA 加速及 CPU 运行
-- **一键高速下载**：
-  - **Windows 独立图形化安装向导**：[`LabelImg2_Setup_v1.0.0.exe`](https://github.com/ByteFlow-art/labelImg2/releases/download/v1.0.0/LabelImg2_Setup_v1.0.0.exe)（推荐，一键部署环境、桌面快捷方式与一键卸载向导）
-  - **完整源码包**：[`Source code (zip)`](https://github.com/ByteFlow-art/labelImg2/archive/refs/tags/v1.0.0.zip)
+- **运行环境**：Windows 10 / Windows 11 (x64) 及 Linux (Ubuntu / Debian 等)，支持 NVIDIA GPU CUDA 加速与 CPU 运行
+- **一键高速下载 (Releases)**：
+  - **Windows 独立图形化安装向导**：[`LabelImg2_Setup_v1.0.0.exe`](https://github.com/ByteFlow-art/labelImg2/releases/download/v1.0.0/LabelImg2_Setup_v1.0.0.exe)（推荐 Windows 用户，一键部署环境、桌面快捷方式与一键卸载）
+  - **Linux Debian / Ubuntu 官方原生安装包**：[`labelimg2_1.0.0_all.deb`](https://github.com/ByteFlow-art/labelImg2/releases/download/v1.0.0/labelimg2_1.0.0_all.deb)（推荐 Ubuntu / Debian / Mint / Deepin 用户）
+  - **跨平台源码压缩包**：[`Source code (zip)`](https://github.com/ByteFlow-art/labelImg2/archive/refs/tags/v1.0.0.zip) | [`Source code (tar.gz)`](https://github.com/ByteFlow-art/labelImg2/archive/refs/tags/v1.0.0.tar.gz)
 
 #### v1.0.0 核心功能升级与优化点
 1. **内置 YOLO AI 智能模型中心**：深度集成 YOLOv8 / YOLOv11 / 自定义模型推理，支持单图秒级预测与全目录多线程后台批量自动批注，画布与标签列表实时双向无缝同步。
@@ -43,14 +44,14 @@
 5. **OBB 主副轴尺寸独立微调**：支持 `X` 键主轴长度微调、`C` 键副轴宽度微调，尺寸调节绝不产生任何角度畸变。
 6. **面积自适应重叠层级管理**：大框自动置底、小框优先置顶，点击拾取与边界判断精准分层，彻底消除密集重叠目标选错与中心红点漂移。
 7. **智能多图撤销机制 (`Ctrl+Z`)**：单图内部精准按步回退新建、删除、旋转、移动、模型标注等操作；当前图片无操作时自动返回上一张图片并回退其最后操作。
-8. **标签选择栏完整预设与自学习**：自动载入全部 61 项工业/通用预置类别，支持标注过程中新增自定义类别的自动记忆与下拉自动补全。
+8. **标签选择栏完整预设与自学习**：自动载入工业与通用预置类别，支持多 `.txt` 标签组无缝切换与管理，标注过程中新增自定义类别自动记忆。
 9. **0 毫秒极速正负数字统计系统**：内存级维护标注计数缓存，支持正负净增量（`+N` / `-N`）与负数警示红框，切图快翻极致丝滑，计数稳定不跳动。
 10. **图片排序与 Windows 资源管理器实时动态同步**：毫秒级捕获系统资源管理器当前文件夹的视觉排序规则（按名称自然增/倒序、按修改日期最新/最旧、按大小/类型等），外部文件夹排序更改即刻实时重排。
 11. **负样本 0 目标安全持久化**：空图片保存时自动弹出负样本确认提示，生成标准化 0-object XML 标签文件，保障负样本训练合规。
 12. **控件防误触锁定机制**：下拉选择框与微调数值框未展开时禁用滚轮滚动，防止滑动浏览界面时改乱模型超参数。
 13. **独立路径解耦与状态记忆**：图片输入目录与标签输出目录完全解耦并持久化记忆，每次启动自动恢复上次真实路径与窗口状态。
-14. **交互式一键卸载向导**：支持“彻底删除所有文件”与“保留隔离环境卸载”双模式，彻底释放空间或保留环境随心选择。
-15. **双轨极速分发与全自动环境初始化**：提供独立图形化安装程序（.exe）与一键自动启动脚本（.bat），首次启动全自动部署 Python/Conda 隔离环境。
+14. **项目智能识别与历史项目一键载入**：Open 功能自动扫描识别项目总文件夹下的 `images/` 与 `labels/`，Open Recent 即时展开历史项目名称一键复现。
+15. **双轨极速分发与全自动环境初始化**：提供独立图形化安装程序（.exe/.deb）与一键自动启动脚本（.bat/.sh），首次启动全自动部署 Python/Conda 隔离环境。
 16. **多标签格式全兼容与无缝双向互通**：全面支持 **Pascal VOC XML (*.xml)**、**YOLO TXT (*.txt)**（含标准水平框与 8 点 OBB 旋转框）、**Create ML JSON (*.json)** 与 **COCO JSON (*.json)**（支持单图与全局数据集级 JSON）。无论是直接打开已有其他格式项目，还是切换格式另存，全部自适应识别加载并即时渲染。
 
 *(后续版本发布将按时间线在下方依次追加更新日志与升级特性)*
@@ -59,61 +60,61 @@
 
 ## 2. 软件安装与快速启动
 
-### 2.1 途径一：独立安装程序 (.exe) [推荐普通用户]
-适合无需配置 Python 开发环境的普通用户与标注人员：
+### 2.1 途径一：Windows 独立安装向导 (.exe) [推荐 Windows 用户]
+适合无需预先配置 Python 环境的 Windows 10 / 11 标注人员与工程师：
 1. 前往本项目的 [GitHub Releases 页面](https://github.com/ByteFlow-art/labelImg2/releases)；
 2. 下载最新版独立安装程序 `LabelImg2_Setup_v1.0.0.exe`；
-3. 运行进入图形化安装向导，按照提示选择安装路径并勾选创建桌面快捷方式与环境自动部署；
-4. 安装完成后勾选“立即运行”即可直接进入工作台，亦可随时通过桌面的 **LabelImg2** 专属高清图标启动。
+3. 双击运行进入图形化安装向导，按照提示选择安装目标路径，勾选“创建桌面快捷方式”与“自动检测并配置 Python 深度学习运行环境”；
+4. 点击“下一步”自动完成文件解压与运行环境全自动初始化；
+5. 安装完成后，即可直接通过桌面 **LabelImg2** 专属图标秒级启动；
+6. **卸载**：随时在安装目录下运行 `Uninstall_LabelImg2.bat` 干净卸载。
 
-### 2.2 途径二：源码便携运行与启动脚本 (.bat) [推荐开发者]
-适合需要便携式运行或进行二次开发的科研与工程人员：
-1. 克隆或直接下载源码压缩包并解压：
-   ```bash
-   git clone https://github.com/ByteFlow-art/labelImg2.git
-   cd labelImg2
-   ```
-2. **一键极速启动**：在项目根目录下，直接双击 **`Start_LabelImg2.bat`**，启动脚本将自动检测依赖环境（首次运行全自动完成环境配置）并秒级拉起工作台；
-3. **生成桌面图标**：双击运行 `Create_Desktop_Shortcut.bat`，即可一键在当前 Windows 桌面上创建带专属应用图标的启动快捷方式。
-
-### 2.3 途径三：Linux 系统一键安装与快速启动 (Ubuntu / Debian / Mint / Deepin 等)
-
-本项目原生提供标准 Debian/Ubuntu 官方原生安装包 (`.deb`) 与自动化环境部署脚本：
-
-#### 方法 A：标准 Debian / Ubuntu 软件包 (.deb) [官方原生推荐]
-1. 从 [Releases 页面](https://github.com/ByteFlow-art/labelImg2/releases) 下载 `labelimg2_1.0.0_all.deb`；
-2. **图形化安装**：直接双击 `.deb` 文件，在系统“应用中心 / GDebi”中点击“安装”；
+### 2.2 途径二：Linux 官方原生安装包 (.deb) [推荐 Linux 用户]
+适合 Ubuntu / Debian / Linux Mint / Deepin / UOS 等主流 Linux 发行版用户：
+1. 从 [GitHub Releases 页面](https://github.com/ByteFlow-art/labelImg2/releases) 下载 `labelimg2_1.0.0_all.deb`；
+2. **图形化安装**：直接双击 `.deb` 文件，在系统软件中心 / GDebi 中点击“安装”；
 3. **命令行一键安装**：
    ```bash
    sudo apt install ./labelimg2_1.0.0_all.deb
    ```
    安装程序将全自动部署至 `/opt/labelimg2`，并在系统 `/usr/bin/labelimg2` 注册全局命令、在系统应用程序菜单与桌面生成官方专属图标！
-4. **标准卸载**：随时可通过 `sudo apt remove labelimg2` 干净卸载。
+4. **日常启动**：
+   - 终端任意位置执行：`labelimg2`
+   - 或在系统应用程序菜单中搜索 **LabelImg2** 点击图标启动。
+5. **标准卸载**：随时通过 `sudo apt remove labelimg2` 彻底卸载。
 
-#### 方法 B：源码克隆一键初始化 (.sh)
-1. 克隆项目并进入根目录：
+### 2.3 途径三：源码克隆与便携启动 (Windows / Linux) [推荐开发者]
+适合需要进行二次开发、修改代码或调试模型的科研人员与开发者：
+
+1. **源码克隆或下载**：
    ```bash
    git clone https://github.com/ByteFlow-art/labelImg2.git
    cd labelImg2
    ```
-2. 运行自动化配置向导：
-   ```bash
-   chmod +x setup_linux.sh Start_LabelImg2.sh
-   ./setup_linux.sh
-   ```
-3. **日常启动**：
-   * 终端任意位置输入：`labelimg2`
-   * 或在项目根目录下执行：`./Start_LabelImg2.sh`
-   * 或在系统应用程序菜单中搜索 **LabelImg2** 点击图标启动。
+   *(亦可直接从 Releases 页面下载 `Source code (zip)` 解压后进入目录)*
 
-### 2.4 途径四：手动命令行环境搭建 (Conda / UV / Pip)
+2. **Windows 便携启动**：
+   - **一键极速启动**：在项目根目录下，直接双击运行 **`Start_LabelImg2.bat`**，启动脚本将自动检测 Conda/Python 虚拟环境并秒级拉起工作台；
+   - **生成桌面图标**：双击运行 **`Create_Desktop_Shortcut.bat`**，即可一键在当前桌面上创建带专属应用图标的启动快捷方式；
+   - **一键清理卸载**：双击运行 `Uninstall_LabelImg2.bat` 即可一键安全清理。
 
+3. **Linux 便携启动**：
+   - 首次运行执行自动化环境配置向导：
+     ```bash
+     chmod +x setup_linux.sh Start_LabelImg2.sh Create_Desktop_Shortcut.sh
+     ./setup_linux.sh
+     ```
+   - **日常启动**：执行 `./Start_LabelImg2.sh`；
+   - **生成桌面快捷方式**：执行 `./Create_Desktop_Shortcut.sh`；
+   - **卸载清理**：执行 `./Uninstall_LabelImg2.sh`。
+
+### 2.4 途径四：手动命令行环境搭建 (Conda / Pip)
 ```bash
 # 1. 创建并激活 Python 虚拟环境 (推荐 Python 3.8 ~ 3.11)
 conda create -n labelimg2 python=3.10 -y
 conda activate labelimg2
 
-# 2. 安装核心依赖 (使用国内清华源极速下载)
+# 2. 安装核心依赖 (使用清华源极速下载)
 pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 # 3. 启动 LabelImg2 工作台

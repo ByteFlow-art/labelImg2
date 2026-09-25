@@ -4,9 +4,16 @@
 	.st0{fill:#231F20;}
 </style>
 <g>
-	<!-- Document File Contour -->
-	<path class="st0" d="M120,20H40C34.5,20,30,24.5,30,30v100c0,5.5,4.5,10,10,10h80c5.5,0,10-4.5,10-10V30C130,24.5,125.5,20,120,20z M120,130H40V30h80V130z"/>
-	<!-- Code Format Tag Icon -->
-	<path class="st0" d="M50,55l20,20l-20,20l-6-6l14-14l-14-14Z M110,55l6,6l-14,14l14,14l-6,6l-20-20Z M75,100h25v8H75Z"/>
+	<!-- Document File Contour with Folded Corner -->
+	<path class="st0" d="M100,10H30c-5.5,0-10,4.5-10,10v120c0,5.5,4.5,10,10,10h100c5.5,0,10-4.5,10-10V50L100,10z M130,140H30V20h65v35h35V140z M105,24.1L125.9,45H105V24.1z"/>
+	<!-- Format Extension Code Symbols -->
+	<!-- Left bracket < -->
+	<path class="st0" d="M58,68l-16,14l16,14l-6,7l-24-21l24-21L58,68z"/>
+	<!-- Right bracket > -->
+	<path class="st0" d="M102,68l6-7l24,21l-24,21l-6-7l16-14L102,68z"/>
+	<!-- Slash / -->
+	<path class="st0" d="M84,62l-14,38l-8-3l14-38L84,62z"/>
+	<!-- Bottom format indicator bars -->
+	<rect class="st0" x="42" y="114" width="76" height="8" rx="2"/>
 </g>
 </svg>

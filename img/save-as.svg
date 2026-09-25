@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+<style type="text/css">
+	.st0{fill:#231F20;}
+</style>
+<g>
+	<!-- Floppy Disk Contour with Bottom-Right Cutout for Edit Pencil -->
+	<path class="st0" d="M125.9,10L150,34.1V75h-10V40L115.9,16H20v128h55v10H10c-5.5,0-10-4.5-10-10V16c0-5.5,4.5-10,10-10h115.9 M130,6H10C4.5,6,0,10.5,0,16v128c0,5.5,4.5,10,10,10h68v-16H16V22h95.9L144,46v32h16V40L130,6z"/>
+	<!-- Top Shutter Window -->
+	<path class="st0" d="M120,10v40H40V10H120 M128,2H32v54c0,3.3,2.7,6,6,6h84c3.3,0,6-2.7,6-6V2z"/>
+	<!-- Shutter Core Notch -->
+	<rect class="st0" x="98" y="8" width="10" height="28" rx="2"/>
+	<!-- Left Portion of Label Window -->
+	<path class="st0" d="M38,82h40v64H38V82z M46,90v48h24V90H46z"/>
+	<!-- Distinct "Save As" Pencil Icon on Bottom Right -->
+	<!-- Pencil Body -->
+	<path class="st0" d="M136,82l16,16l-46,46l-18,4l4-18L136,82z M132,96l-36,36l-2,9l9-2l36-36L132,96z"/>
+	<!-- Pencil Eraser Cap -->
+	<path class="st0" d="M142,76l10,10l-6,6l-10-10L142,76z"/>
+</g>
+</svg>
