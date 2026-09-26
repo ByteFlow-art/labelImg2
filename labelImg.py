@@ -526,8 +526,8 @@ class MainWindow(QMainWindow, WindowMixin):
             fmt_act.triggered.connect(partial(self.set_save_format, fmt))
             saveFormatMenu.addAction(fmt_act)
             self.saveFormatActions.append(fmt_act)
-
         saveFormat.setMenu(saveFormatMenu)
+        saveFormat.setToolTip(f"标注保存格式: {self.save_format} (点击切换)")
 
         # 最近项目菜单 (Open Recent)
         recentProjectsMenu = QMenu('Open &Recent', self)
@@ -716,13 +716,15 @@ class MainWindow(QMainWindow, WindowMixin):
         self.save_format = format_name
         self.settings['save_format'] = format_name
         self.settings.save()
-        msg = f"[Save Format Terminal] 标注保存文件格式类型已切换为: {format_name}"
-        self.statusBar().showMessage(msg, 3000)
-        log_terminal(msg)
+
         if hasattr(self, 'saveFormatActions'):
             for act in self.saveFormatActions:
                 act.setChecked(act.text() == format_name)
+        if hasattr(self.actions, 'saveFormat') and self.actions.saveFormat:
+            self.actions.saveFormat.setToolTip(f"当前保存格式: {format_name} (点击切换)")
+
         if hasattr(self, 'auto_annotate_dialog') and self.auto_annotate_dialog is not None:
+            self.auto_annotate_dialog.save_format = format_name
             if hasattr(self.auto_annotate_dialog, 'combo_save_format'):
                 idx = self.auto_annotate_dialog.combo_save_format.findText(format_name)
                 if idx >= 0:
@@ -730,24 +732,40 @@ class MainWindow(QMainWindow, WindowMixin):
                     self.auto_annotate_dialog.combo_save_format.setCurrentIndex(idx)
                     self.auto_annotate_dialog.combo_save_format.blockSignals(False)
 
-        # 若当前已打开图片，检测该格式下是否已有独立标注文件；若有则无缝即时载入
+        # 切换格式后，如果当前图片已有标注，记录原文件并标记为待保存 (dirty)，启用保存按钮以支持主动保存实现格式替换
         if hasattr(self, 'filePath') and self.filePath and os.path.exists(self.filePath):
-            from libs.annotation_io import find_annotation_file, read_annotations
-            anno_file, detected_fmt = find_annotation_file(
-                image_path=self.filePath,
-                preferred_format=self.save_format,
-                save_dir=self.defaultSaveDir,
-                image_dir=self.dirname
-            )
-            if anno_file and detected_fmt == self.save_format:
-                img_shape = (self.image.height(), self.image.width(), 3) if (hasattr(self, 'image') and self.image) else (1, 1, 3)
-                shapes = read_annotations(anno_file, detected_fmt, img_shape, getattr(self, 'labelHist', None), self.filePath)
-                if shapes:
-                    self.resetState()
-                    self.loadLabels(shapes)
-                    self.setClean()
-                    self.canvas.update()
-                    self.update_stats()
+            has_existing = (hasattr(self, 'canvas') and self.canvas and len(self.canvas.shapes) > 0) or bool(getattr(self, 'current_annotation_file', None))
+            if has_existing:
+                self._old_annotation_file = getattr(self, 'current_annotation_file', None)
+                if getattr(self, 'current_annotation_format', None) != self.save_format:
+                    self.setDirty()
+                    msg = f"[Save Format Terminal] 标注保存格式已切换为: {format_name}，点击保存 (Ctrl+S) 即可完成格式替换"
+                    self.statusBar().showMessage(msg, 4000)
+                    log_terminal(msg)
+                    return
+            else:
+                from libs.annotation_io import find_annotation_file, read_annotations
+                anno_file, detected_fmt = find_annotation_file(
+                    image_path=self.filePath,
+                    preferred_format=self.save_format,
+                    save_dir=self.defaultSaveDir,
+                    image_dir=self.dirname
+                )
+                if anno_file and detected_fmt == self.save_format:
+                    img_shape = (self.image.height(), self.image.width(), 3) if (hasattr(self, 'image') and self.image) else (1, 1, 3)
+                    shapes = read_annotations(anno_file, detected_fmt, img_shape, getattr(self, 'labelHist', None), self.filePath)
+                    if shapes:
+                        self.remAllLabels()
+                        self.loadLabels(shapes)
+                        self.setClean()
+                        self.current_annotation_file = anno_file
+                        self.current_annotation_format = detected_fmt
+                        self.canvas.update()
+                        self.update_stats()
+
+        msg = f"[Save Format Terminal] 标注保存文件格式类型已切换为: {format_name}"
+        self.statusBar().showMessage(msg, 3000)
+        log_terminal(msg)
 
     def markFileSavedInList(self, file_path_or_idx, shape_count=None):
         """将保存/修改过的文件在右下角 File List 中高亮标为荧光绿"""
@@ -1056,7 +1074,13 @@ class MainWindow(QMainWindow, WindowMixin):
         if self.autoSaving.isChecked():
             if self.defaultSaveDir is not None:
                 self.labelList.earlyCommit()
-                if self.dirty is True:
+                format_mismatched = (
+                    hasattr(self, 'current_annotation_format') and
+                    self.current_annotation_format is not None and
+                    self.current_annotation_format != self.save_format and
+                    len(self.canvas.shapes) > 0
+                )
+                if self.dirty is True or format_mismatched:
                     if len(self.canvas.shapes) == 0:
                         prev_file = self.fileModel.data(previous, Qt.EditRole)
                         reply = QMessageBox.question(
@@ -1074,27 +1098,6 @@ class MainWindow(QMainWindow, WindowMixin):
                     else:
                         self.markFileSavedInList(previous, len(self.canvas.shapes))
                         self.saveFile(prompt_empty=False)
-                elif len(self.canvas.shapes) == 0 and self.filePath:
-                    prev_file = self.fileModel.data(previous, Qt.EditRole)
-                    if prev_file:
-                        stem = os.path.splitext(os.path.basename(prev_file))[0]
-                        if self.dirname is not None:
-                            rel = os.path.relpath(prev_file, self.dirname)
-                            rel = os.path.splitext(rel)[0]
-                            xml_path = os.path.join(self.defaultSaveDir, rel) + '.xml'
-                        else:
-                            xml_path = os.path.join(os.path.dirname(prev_file), stem) + '.xml'
-                        if not os.path.exists(xml_path):
-                            reply = QMessageBox.question(
-                                self,
-                                "保存空标注确认",
-                                f"图片 [{os.path.basename(prev_file)}] 未绘制任何标注框。\n是否确认保存为空标注（负样本/背景图）文件？",
-                                QMessageBox.Yes | QMessageBox.No,
-                                QMessageBox.Yes
-                            )
-                            if reply == QMessageBox.Yes:
-                                self.markFileSavedInList(previous, 0)
-                                self.saveFile(prompt_empty=False)
             else:
                 self.changeSavedirDialog()
                 return
@@ -1233,6 +1236,11 @@ class MainWindow(QMainWindow, WindowMixin):
             self.labelModel.blockSignals(False)
             self.update_label_list_numbers()
 
+            if hasattr(self, 'labelList') and self.labelList and hasattr(self.labelList, 'verticalHeader'):
+                vh = self.labelList.verticalHeader()
+                if hasattr(vh, 'isChecked'):
+                    vh.isChecked = [1] * self.labelModel.rowCount()
+
             if new_selected_row >= 0:
                 self.labelsm.blockSignals(True)
                 self.labelList.selectRow(new_selected_row)
@@ -1242,6 +1250,11 @@ class MainWindow(QMainWindow, WindowMixin):
 
     def addLabel(self, shape):
         shape.paintLabel = self.paintLabelsOption.isChecked()
+
+        if shape.label and shape.label not in self.labelHist:
+            self.labelHist.append(shape.label)
+            if hasattr(self, 'labelList') and self.labelList:
+                self.labelList.updateLabelList(self.labelHist)
 
         item0 = HashableQStandardItem(shape.label)
         item1 = QStandardItem(shape.extra_label)
@@ -1279,6 +1292,7 @@ class MainWindow(QMainWindow, WindowMixin):
     def remAllLabels(self):
         self.canvas.deleteAll()
         self.labelModel.clear()
+        self.labelModel.setHorizontalHeaderLabels(["Label", "Extra Info"])
         self.ShapeItemDict.clear()
         self.ItemShapeDict.clear()
         self.update_label_list_numbers()
@@ -1441,41 +1455,46 @@ class MainWindow(QMainWindow, WindowMixin):
     # Callback functions:
     def newShape(self, continous):
         text = self.default_label
-        extra_text = ""
-        if text is not None:
-            generate_color = generateColorByText(text)
-            shape = self.canvas.setLastLabel(text, generate_color, generate_color, extra_text)
-            shape.alwaysShowCorner=self.drawCorner.isChecked()
-
-            self.addLabel(shape)
-            if continous:
-                pass
+        if not text:
+            if hasattr(self, 'labelHist') and self.labelHist:
+                text = self.labelHist[0]
             else:
-                self.canvas.setEditing(1)
-                self.actions.create.setEnabled(True)
-                self.actions.createSo.setEnabled(True)
-                self.actions.createRo.setEnabled(True)
-
-            self.setDirty()
-
-            # 默认选中新建的标注框，并在归类完成后安全展开右侧对应的标签下拉选项
-            self.canvas.selectShape(shape)
-            def expand_new_shape_label():
-                if shape in self.ShapeItemDict:
-                    item0 = self.ShapeItemDict[shape]
-                    index = self.labelModel.indexFromItem(item0)
-                    if index.isValid():
-                        row = index.row()
-                        self.labelsm.blockSignals(True)
-                        self.labelList.selectRow(row)
-                        self.labelsm.blockSignals(False)
-                        col0_idx = self.labelModel.index(row, 0)
-                        if self.labelList.state() != QAbstractItemView.EditingState:
-                            self.labelList.edit(col0_idx)
-            QTimer.singleShot(60, expand_new_shape_label)
-        else:
-            # self.canvas.undoLastLine()
+                text = "object"
+            self.default_label = text
+        extra_text = ""
+        generate_color = generateColorByText(text)
+        shape = self.canvas.setLastLabel(text, generate_color, generate_color, extra_text)
+        if shape is None:
             self.canvas.resetAllLines()
+            return
+        shape.alwaysShowCorner=self.drawCorner.isChecked()
+
+        self.addLabel(shape)
+        if continous:
+            pass
+        else:
+            self.canvas.setEditing(1)
+            self.actions.create.setEnabled(True)
+            self.actions.createSo.setEnabled(True)
+            self.actions.createRo.setEnabled(True)
+
+        self.setDirty()
+
+        # 默认选中新建的标注框，并在归类完成后安全展开右侧对应的标签下拉选项
+        self.canvas.selectShape(shape)
+        def expand_new_shape_label():
+            if shape in self.ShapeItemDict:
+                item0 = self.ShapeItemDict[shape]
+                index = self.labelModel.indexFromItem(item0)
+                if index.isValid():
+                    row = index.row()
+                    self.labelsm.blockSignals(True)
+                    self.labelList.selectRow(row)
+                    self.labelsm.blockSignals(False)
+                    col0_idx = self.labelModel.index(row, 0)
+                    if self.labelList.state() != QAbstractItemView.EditingState:
+                        self.labelList.edit(col0_idx)
+        QTimer.singleShot(60, expand_new_shape_label)
 
     def scrollRequest(self, delta, orientation):
         #units = - delta / (8 * 15)
@@ -1679,12 +1698,22 @@ class MainWindow(QMainWindow, WindowMixin):
             mods = event.modifiers()
             focus_widget = QApplication.focusWidget()
             is_typing_text = False
-            if focus_widget and isinstance(focus_widget, (QTextEdit, QPlainTextEdit)):
-                is_typing_text = True
-            elif focus_widget and isinstance(focus_widget, QLineEdit):
-                if hasattr(self, 'labelList') and self.labelList:
-                    if self.labelList.extra_delegate and self.labelList.extra_delegate.editor == focus_widget:
-                        is_typing_text = True
+            for w in (focus_widget, obj):
+                if not w:
+                    continue
+                from PyQt5.QtWidgets import QLineEdit, QTextEdit, QPlainTextEdit, QAbstractSpinBox, QComboBox, QAbstractItemView
+                if isinstance(w, (QLineEdit, QTextEdit, QPlainTextEdit, QAbstractSpinBox, QComboBox)):
+                    is_typing_text = True
+                    break
+                elif w.parent() and isinstance(w.parent(), (QLineEdit, QTextEdit, QPlainTextEdit, QAbstractSpinBox, QComboBox)):
+                    is_typing_text = True
+                    break
+            if not is_typing_text and hasattr(self, 'labelList') and self.labelList:
+                from PyQt5.QtWidgets import QAbstractItemView
+                if self.labelList.state() == QAbstractItemView.EditingState:
+                    is_typing_text = True
+                elif self.labelList.extra_delegate and self.labelList.extra_delegate.editor in (focus_widget, obj):
+                    is_typing_text = True
 
             if (mods & Qt.ControlModifier):
                 if (mods & Qt.ShiftModifier) and (key == Qt.Key_Z or txt == 'z'):
@@ -1710,7 +1739,7 @@ class MainWindow(QMainWindow, WindowMixin):
                     log_terminal("[Shortcut Ctrl+Shift+L Terminal] 切换标注框标签文字显示/隐藏")
                     return True
 
-            if (key in (Qt.Key_Q, Qt.Key_Delete, Qt.Key_Backspace) or (txt == 'q' and not mods)) and not is_typing_text:
+            if (key in (Qt.Key_Q, Qt.Key_Delete) or (txt == 'q' and not mods)) and not is_typing_text:
                 if hasattr(self, 'canvas') and self.canvas:
                     self.canvas.dragIgnoreUntilMouseUp = True
                     self.canvas.prevPoint = QPointF()
@@ -1790,7 +1819,7 @@ class MainWindow(QMainWindow, WindowMixin):
     def keyPressEvent(self, event):
         key = event.key()
         txt = event.text().lower() if event.text() else ""
-        if key in (Qt.Key_Q, Qt.Key_Delete, Qt.Key_Backspace) or txt == 'q':
+        if (key in (Qt.Key_Q, Qt.Key_Delete) or txt == 'q'):
             self.deleteSelectedShape()
             event.accept()
             return
@@ -1898,6 +1927,7 @@ class MainWindow(QMainWindow, WindowMixin):
         settings[SETTING_PAINT_LABEL] = self.paintLabelsOption.isChecked()
         if hasattr(self, 'combo_file_sort'):
             settings['file_sort_mode'] = self.combo_file_sort.currentIndex()
+        settings['save_format'] = self.save_format
         settings.save()
     ## User Dialogs ##
 
@@ -2057,12 +2087,20 @@ class MainWindow(QMainWindow, WindowMixin):
 
         if labels_dir and os.path.exists(labels_dir):
             self.defaultSaveDir = labels_dir
-            self.settings[SETTING_SAVE_DIR] = labels_dir
-            self.settings['last_save_dir'] = labels_dir
-        elif not self.defaultSaveDir or not os.path.exists(self.defaultSaveDir):
-            self.defaultSaveDir = dirpath
-            self.settings[SETTING_SAVE_DIR] = dirpath
-            self.settings['last_save_dir'] = dirpath
+        else:
+            parent = os.path.dirname(dirpath)
+            candidate_labels = os.path.join(parent, 'labels')
+            candidate_annos = os.path.join(parent, 'Annotations')
+            if os.path.isdir(candidate_labels):
+                self.defaultSaveDir = candidate_labels
+            elif os.path.isdir(candidate_annos):
+                self.defaultSaveDir = candidate_annos
+            elif os.path.isdir(os.path.join(dirpath, 'labels')):
+                self.defaultSaveDir = os.path.join(dirpath, 'labels')
+            else:
+                self.defaultSaveDir = dirpath
+        self.settings[SETTING_SAVE_DIR] = self.defaultSaveDir
+        self.settings['last_save_dir'] = self.defaultSaveDir
         self.settings.save()
 
         imglist = self.scanAllImages(dirpath)
@@ -2406,7 +2444,35 @@ class MainWindow(QMainWindow, WindowMixin):
     def _saveFile(self, annotationFilePath):
         if annotationFilePath and self.saveLabels(annotationFilePath):
             self.setClean()
-            self.statusBar().showMessage('Saved to  %s' % annotationFilePath)
+            self.current_annotation_format = self.save_format
+            from libs.annotation_io import get_format_ext
+            ext = get_format_ext(self.save_format)
+            saved_final_path = os.path.splitext(annotationFilePath)[0] + ext
+            self.current_annotation_file = saved_final_path
+
+            # 实现标签格式的替换：清理并替换同名其他旧格式标注文件（如 .xml / .txt / .json），避免格式冗余和读取冲突
+            base_stem = os.path.splitext(annotationFilePath)[0]
+            for old_ext in ('.xml', '.txt', '.json'):
+                if old_ext.lower() != ext.lower():
+                    old_cand = base_stem + old_ext
+                    if os.path.isfile(old_cand):
+                        try:
+                            os.remove(old_cand)
+                            log_terminal(f"[Format Replace Terminal] 已替换并移除旧格式标注文件: {old_cand}")
+                        except Exception as e:
+                            log_terminal(f"[Format Replace Error] 移除旧格式标注文件失败: {e}")
+
+            # 若曾记录跨目录原格式标注文件，一并清理
+            if hasattr(self, '_old_annotation_file') and self._old_annotation_file:
+                if os.path.isfile(self._old_annotation_file) and os.path.abspath(self._old_annotation_file) != os.path.abspath(saved_final_path):
+                    try:
+                        os.remove(self._old_annotation_file)
+                        log_terminal(f"[Format Replace Terminal] 已替换并移除原格式文件: {self._old_annotation_file}")
+                    except Exception:
+                        pass
+                self._old_annotation_file = None
+
+            self.statusBar().showMessage(f"已成功替换并保存为 [{self.save_format}]: {saved_final_path}", 3000)
             self.statusBar().show()
             self.markFileSavedInList(self.filePath, len(self.canvas.shapes))
             if hasattr(self, '_xml_stats_cache'):
@@ -2802,13 +2868,12 @@ class MainWindow(QMainWindow, WindowMixin):
             self.labelHist = []
 
         candidates = []
-        if hasattr(self, 'settings') and self.settings:
+        if predefClassesFile and isinstance(predefClassesFile, str) and os.path.isfile(predefClassesFile):
+            candidates.append(predefClassesFile)
+        elif hasattr(self, 'settings') and self.settings:
             saved_file = self.settings.get('current_label_file', None)
             if saved_file and os.path.isfile(saved_file):
                 candidates.append(saved_file)
-
-        if predefClassesFile and isinstance(predefClassesFile, str):
-            candidates.append(predefClassesFile)
 
         base_dir = os.path.dirname(os.path.abspath(__file__))
         candidates.append(os.path.join(base_dir, "data", "predefined_classes.txt"))

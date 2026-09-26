@@ -19,9 +19,12 @@ SUPPORTED_FORMATS = [
 ]
 
 def get_format_ext(format_name):
-    if format_name == FORMAT_YOLO:
+    if not format_name:
+        return ".xml"
+    fmt = str(format_name).upper()
+    if "YOLO" in fmt or ".TXT" in fmt:
         return ".txt"
-    elif format_name in (FORMAT_CREATE_ML, FORMAT_COCO):
+    elif "CREATE_ML" in fmt or "CREATE ML" in fmt or "COCO" in fmt or ".JSON" in fmt:
         return ".json"
     return ".xml"
 
@@ -40,15 +43,27 @@ def find_annotation_file(image_path, preferred_format=None, save_dir=None, image
     search_dirs = []
     if save_dir and os.path.exists(save_dir):
         save_dir = os.path.abspath(save_dir)
-        search_dirs.append(save_dir)
+        if save_dir not in search_dirs:
+            search_dirs.append(save_dir)
         for sub in ("Annotations", "annotations", "labels", "Labels"):
             p = os.path.join(save_dir, sub)
-            if os.path.exists(p): search_dirs.append(p)
+            if os.path.exists(p) and p not in search_dirs:
+                search_dirs.append(p)
 
-    search_dirs.append(img_dir)
+    if img_dir not in search_dirs:
+        search_dirs.append(img_dir)
     for sub in ("Annotations", "annotations", "labels", "Labels"):
         p = os.path.join(img_dir, sub)
-        if os.path.exists(p): search_dirs.append(p)
+        if os.path.exists(p) and p not in search_dirs:
+            search_dirs.append(p)
+
+    # 兼容父目录同级 labels / Annotations (如 dataset/images 对应 dataset/labels)
+    parent_img_dir = os.path.dirname(img_dir)
+    if parent_img_dir and os.path.exists(parent_img_dir):
+        for sub in ("labels", "Labels", "Annotations", "annotations"):
+            p = os.path.join(parent_img_dir, sub)
+            if os.path.exists(p) and p not in search_dirs:
+                search_dirs.append(p)
 
     if image_dir and os.path.exists(image_dir):
         image_dir = os.path.abspath(image_dir)
@@ -56,7 +71,8 @@ def find_annotation_file(image_path, preferred_format=None, save_dir=None, image
             search_dirs.append(image_dir)
         for sub in ("Annotations", "annotations", "labels", "Labels"):
             p = os.path.join(image_dir, sub)
-            if os.path.exists(p): search_dirs.append(p)
+            if os.path.exists(p) and p not in search_dirs:
+                search_dirs.append(p)
 
     # 计算相对路径 stem (支持多层子目录)
     rel_stems = [stem]
@@ -71,11 +87,12 @@ def find_annotation_file(image_path, preferred_format=None, save_dir=None, image
 
     # 根据 preferred_format 确定扩展名优先级
     ext_priority = [".xml", ".txt", ".json"]
-    if preferred_format == FORMAT_YOLO:
+    fmt_upper = str(preferred_format or "").upper()
+    if "YOLO" in fmt_upper or ".TXT" in fmt_upper:
         ext_priority = [".txt", ".xml", ".json"]
-    elif preferred_format in (FORMAT_CREATE_ML, FORMAT_COCO):
+    elif "CREATE_ML" in fmt_upper or "CREATE ML" in fmt_upper or "COCO" in fmt_upper or ".JSON" in fmt_upper:
         ext_priority = [".json", ".xml", ".txt"]
-    elif preferred_format == FORMAT_PASCAL_VOC:
+    elif "VOC" in fmt_upper or "PASCAL" in fmt_upper or ".XML" in fmt_upper:
         ext_priority = [".xml", ".txt", ".json"]
 
     # 1. 精确匹配单图对应标注文件
@@ -142,37 +159,40 @@ def read_annotations(file_path, format_name, image_shape, class_list=None, image
     if not file_path or not os.path.isfile(file_path):
         return []
 
-    ext = os.path.splitext(file_path)[1].lower()
+    try:
+        ext = os.path.splitext(file_path)[1].lower()
+        fmt_upper = str(format_name or "").upper()
 
-    # 1. Pascal VOC XML
-    if ext == '.xml' or format_name == FORMAT_PASCAL_VOC:
-        reader = PascalVocReader(file_path)
-        return reader.getShapes()
+        # 1. Pascal VOC XML
+        if ext == '.xml' or "VOC" in fmt_upper or "PASCAL" in fmt_upper:
+            reader = PascalVocReader(file_path)
+            return reader.getShapes()
 
-    # 2. YOLO TXT
-    elif ext == '.txt' or format_name == FORMAT_YOLO:
-        reader = YoloReader(file_path, image_shape, classList=class_list)
-        return reader.getShapes()
+        # 2. YOLO TXT
+        elif ext == '.txt' or "YOLO" in fmt_upper:
+            reader = YoloReader(file_path, image_shape, classList=class_list)
+            return reader.getShapes()
 
-    # 3. JSON (Create ML 或 COCO)
-    elif ext == '.json' or format_name in (FORMAT_CREATE_ML, FORMAT_COCO):
-        detected_fmt = identify_file_format(file_path, format_name)
-        if detected_fmt == FORMAT_COCO:
-            reader = COCOReader(file_path, imagePath=image_path)
-            shapes = reader.getShapes()
-            if shapes:
-                return shapes
-            # 回退尝试 Create ML
-            ml_reader = CreateMLReader(file_path, imagePath=image_path)
-            return ml_reader.getShapes()
-        else:
-            reader = CreateMLReader(file_path, imagePath=image_path)
-            shapes = reader.getShapes()
-            if shapes:
-                return shapes
-            # 回退尝试 COCO
-            coco_reader = COCOReader(file_path, imagePath=image_path)
-            return coco_reader.getShapes()
+        # 3. JSON (Create ML 或 COCO)
+        elif ext == '.json' or "CREATE_ML" in fmt_upper or "COCO" in fmt_upper or "JSON" in fmt_upper:
+            detected_fmt = identify_file_format(file_path, format_name)
+            if detected_fmt == FORMAT_COCO:
+                reader = COCOReader(file_path, imagePath=image_path)
+                shapes = reader.getShapes()
+                if shapes:
+                    return shapes
+                ml_reader = CreateMLReader(file_path, imagePath=image_path)
+                return ml_reader.getShapes()
+            else:
+                reader = CreateMLReader(file_path, imagePath=image_path)
+                shapes = reader.getShapes()
+                if shapes:
+                    return shapes
+                coco_reader = COCOReader(file_path, imagePath=image_path)
+                return coco_reader.getShapes()
+    except Exception as e:
+        print(f"[AnnotationIO] Error reading {file_path}: {e}")
+        return []
 
     return []
 
@@ -184,9 +204,10 @@ def write_annotations(target_file, format_name, shapes, image_path, image_shape,
     os.makedirs(out_dir, exist_ok=True)
     filename = os.path.basename(image_path)
     folder_name = os.path.basename(os.path.dirname(image_path))
+    fmt_upper = str(format_name or "").upper()
 
     # 1. YOLO TXT 格式
-    if format_name == FORMAT_YOLO:
+    if "YOLO" in fmt_upper or ".TXT" in fmt_upper:
         if not target_file.lower().endswith('.txt'):
             target_file = os.path.splitext(target_file)[0] + '.txt'
         writer = YoloWriter(folder_name, filename, image_shape, classList=class_list)
@@ -206,7 +227,7 @@ def write_annotations(target_file, format_name, shapes, image_path, image_shape,
         return target_file
 
     # 2. Create ML JSON 格式
-    elif format_name == FORMAT_CREATE_ML:
+    elif "CREATE_ML" in fmt_upper or "CREATE ML" in fmt_upper:
         if not target_file.lower().endswith('.json'):
             target_file = os.path.splitext(target_file)[0] + '.json'
         writer = CreateMLWriter(folder_name, filename, image_shape)
@@ -226,7 +247,7 @@ def write_annotations(target_file, format_name, shapes, image_path, image_shape,
         return target_file
 
     # 3. COCO JSON 格式
-    elif format_name == FORMAT_COCO:
+    elif "COCO" in fmt_upper:
         if not target_file.lower().endswith('.json'):
             target_file = os.path.splitext(target_file)[0] + '.json'
         writer = COCOWriter(folder_name, filename, image_shape)

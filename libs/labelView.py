@@ -21,8 +21,7 @@ class PopupKeyFilter(QObject):
     def eventFilter(self, obj, e):
         if e.type() == QEvent.KeyPress:
             key = e.key()
-            txt = e.text().lower() if e.text() else ""
-            if key in (Qt.Key_Q, Qt.Key_Delete, Qt.Key_Backspace) or txt == 'q':
+            if key == Qt.Key_Delete:
                 if self.combo:
                     try:
                         self.combo.hidePopup()
@@ -39,8 +38,7 @@ class CLabelComboBox(QComboBox):
     def event(self, e):
         if e.type() == QEvent.KeyPress:
             key = e.key()
-            txt = e.text().lower() if e.text() else ""
-            if key in (Qt.Key_Q, Qt.Key_Delete, Qt.Key_Backspace) or txt == 'q':
+            if key == Qt.Key_Delete:
                 try:
                     self.hidePopup()
                 except Exception:
@@ -70,6 +68,8 @@ class CComboBoxDelegate(QStyledItemDelegate):
             editor.addItem(display_text, item_text)
         
         curr_text = index.model().data(index, Qt.EditRole)
+        if curr_text and curr_text not in [str(x) for x in self.listItem]:
+            editor.addItem(f"{editor.count() + 1}. {curr_text}", curr_text)
         tindex = -1
         for k in range(editor.count()):
             if editor.itemData(k) == curr_text or editor.itemText(k) == curr_text:
@@ -77,7 +77,7 @@ class CComboBoxDelegate(QStyledItemDelegate):
                 break
         if tindex >= 0:
             editor.setCurrentIndex(tindex)
-        else:
+        elif editor.count() > 0:
             editor.setCurrentIndex(0)
         editor.blockSignals(False)
 
@@ -118,6 +118,8 @@ class CComboBoxDelegate(QStyledItemDelegate):
             if sys.version_info < (3, 0, 0):
                 text = text.toPyObject()
             combox = editor
+            if text and text not in [combox.itemData(k) for k in range(combox.count())]:
+                combox.addItem(f"{combox.count() + 1}. {text}", text)
             tindex = -1
             for k in range(combox.count()):
                 if combox.itemData(k) == text or combox.itemText(k) == text:
@@ -205,7 +207,10 @@ class CHeaderView(QHeaderView):
         option.state = QStyle.State_Enabled | QStyle.State_Active
         option.rect = QRect(rect.x() + self._x_offset, rect.y() + self._y_offset, self._width, self._height)
         
-        if logicalIndex < len(self.isChecked) and self.isChecked[logicalIndex]:
+        is_chk = 1
+        if logicalIndex < len(self.isChecked):
+            is_chk = self.isChecked[logicalIndex]
+        if is_chk:
             option.state |= QStyle.State_On
         else:
             option.state |= QStyle.State_Off
@@ -232,6 +237,8 @@ class CHeaderView(QHeaderView):
             y = self.sectionViewportPosition(index)
             if self._x_offset < e.pos().x() < self._x_offset + self._width \
                 and y + self._y_offset < e.pos().y() < y + self._y_offset + self._height:
+                while len(self.isChecked) <= index:
+                    self.isChecked.append(1)
                 if self.isChecked[index] == 1:
                     self.isChecked[index] = 0
                 else:
@@ -305,7 +312,7 @@ class CLabelView(QTableView):
     def keyPressEvent(self, e):
         key = e.key()
         txt = e.text().lower() if e.text() else ""
-        if key in (Qt.Key_Q, Qt.Key_Delete, Qt.Key_Backspace) or txt == 'q':
+        if key in (Qt.Key_Q, Qt.Key_Delete) or txt == 'q':
             win = self.window()
             if hasattr(win, 'deleteSelectedShape'):
                 win.deleteSelectedShape()

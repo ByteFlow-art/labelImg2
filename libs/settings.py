@@ -1,7 +1,12 @@
-#import json
 import pickle
 import os
 import sys
+
+try:
+    import PyQt5.sip
+    sys.modules['sip'] = PyQt5.sip
+except ImportError:
+    pass
 
 class Settings(object):
     def __init__(self):

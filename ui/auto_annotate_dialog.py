@@ -700,9 +700,19 @@ class AutoAnnotateDialog(QDialog):
             elif hasattr(self, 'rb_mode_overwrite'):
                 self.rb_mode_overwrite.setChecked(True)
 
-            fmt_idx = settings.value("model_center/save_format_idx", 0, type=int)
-            if 0 <= fmt_idx < self.combo_save_format.count():
-                self.combo_save_format.setCurrentIndex(fmt_idx)
+            if hasattr(self.main_window, 'save_format') and self.main_window.save_format:
+                fmt = self.main_window.save_format
+                idx = self.combo_save_format.findText(fmt)
+                if idx >= 0:
+                    self.combo_save_format.blockSignals(True)
+                    self.combo_save_format.setCurrentIndex(idx)
+                    self.combo_save_format.blockSignals(False)
+            else:
+                fmt_idx = settings.value("model_center/save_format_idx", 0, type=int)
+                if 0 <= fmt_idx < self.combo_save_format.count():
+                    self.combo_save_format.blockSignals(True)
+                    self.combo_save_format.setCurrentIndex(fmt_idx)
+                    self.combo_save_format.blockSignals(False)
 
             last_pt = settings.value("model_center/last_model_path", "", type=str)
             if last_pt and os.path.exists(last_pt):
@@ -750,17 +760,20 @@ class AutoAnnotateDialog(QDialog):
 
         os.makedirs(save_dir, exist_ok=True)
 
+        from libs.annotation_io import get_format_ext
+        active_fmt = getattr(self.main_window, 'save_format', self.save_format)
+        ext = get_format_ext(active_fmt)
         stem = os.path.splitext(os.path.basename(img_path))[0]
-        xml_path = os.path.join(save_dir, f"{stem}.xml")
+        anno_path = os.path.join(save_dir, f"{stem}{ext}")
 
         is_append = getattr(self, 'rb_mode_append', None) and self.rb_mode_append.isChecked()
         overwrite_mode = not is_append
 
-        if overwrite_mode and os.path.exists(xml_path):
+        if overwrite_mode and os.path.exists(anno_path):
             reply = QMessageBox.question(
                 self,
                 "覆盖标注确认",
-                f"检测到标注文件 [{stem}.xml] 已存在！\n当前为【完全覆盖模式】，是否确定覆盖已有标注内容？\n\n(提示：若想保留原图已有标注，请在模型中心切换为【追加合并模式】)",
+                f"检测到标注文件 [{stem}{ext}] 已存在！\n当前为【完全覆盖模式】，是否确定覆盖已有标注内容？\n\n(提示：若想保留原图已有标注，请在模型中心切换为【追加合并模式】)",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No if hasattr(QMessageBox, 'StandardButton') else QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.StandardButton.No if hasattr(QMessageBox, 'StandardButton') else QMessageBox.No
             )
@@ -866,7 +879,7 @@ class AutoAnnotateDialog(QDialog):
                     self.main_window.update_stats()
 
                 mode_str = "追加合并模式"
-                status_msg = f"单图自动批注完成 [{mode_str}]: 已在原标注基础上追加新检测目标 {added_count} 个 (原标注完全保留) -> {os.path.basename(xml_path)}"
+                status_msg = f"单图自动批注完成 [{mode_str}]: 已在原标注基础上追加新检测目标 {added_count} 个 (原标注完全保留) -> {os.path.basename(anno_path)}"
             else:
                 # 完全覆盖替换模式：清空现有标签，载入模型检测的所有目标
                 if hasattr(self.main_window, 'remAllLabels'):
@@ -905,7 +918,7 @@ class AutoAnnotateDialog(QDialog):
                     self.main_window.update_stats()
 
                 mode_str = "完全覆盖模式"
-                status_msg = f"单图自动批注完成 [{mode_str}]: 替换为 {len(filtered_boxes)} 个目标 -> {os.path.basename(xml_path)}"
+                status_msg = f"单图自动批注完成 [{mode_str}]: 替换为 {len(filtered_boxes)} 个目标 -> {os.path.basename(anno_path)}"
 
             if hasattr(self.main_window, 'statusBar') and self.main_window.statusBar():
                 self.main_window.statusBar().showMessage(status_msg, 5000)
@@ -932,8 +945,12 @@ class AutoAnnotateDialog(QDialog):
         is_append = getattr(self, 'rb_mode_append', None) and self.rb_mode_append.isChecked()
         overwrite_mode = not is_append
 
+        from libs.annotation_io import get_format_ext
+        active_fmt = getattr(self.main_window, 'save_format', self.save_format)
+        ext = get_format_ext(active_fmt)
+
         if overwrite_mode:
-            existing_count = sum(1 for p in image_paths if os.path.exists(os.path.join(save_dir, f"{os.path.splitext(os.path.basename(p))[0]}.xml")))
+            existing_count = sum(1 for p in image_paths if os.path.exists(os.path.join(save_dir, f"{os.path.splitext(os.path.basename(p))[0]}{ext}")))
             if existing_count > 0:
                 reply = QMessageBox.question(
                     self,
@@ -952,6 +969,7 @@ class AutoAnnotateDialog(QDialog):
         conf = self.slider_conf.value() / 100.0
         iou = self.slider_iou.value() / 100.0
         mapping = self.get_class_mapping()
+        classes = getattr(self.main_window, 'labelHist', None)
 
         self.progress_bar.setValue(0)
         self.progress_bar.setVisible(True)
@@ -962,10 +980,12 @@ class AutoAnnotateDialog(QDialog):
             conf_threshold=conf,
             iou_threshold=iou,
             class_mapping=mapping,
-            save_xml=True,
-            save_yolo_txt=False,
+            save_format=active_fmt,
+            save_xml="XML" in str(active_fmt).upper() or "VOC" in str(active_fmt).upper(),
+            save_yolo_txt="YOLO" in str(active_fmt).upper() or ".TXT" in str(active_fmt).upper(),
             overwrite=overwrite_mode,
-            custom_output_dir=save_dir
+            custom_output_dir=save_dir,
+            class_list=classes
         )
 
         self.batch_thread.progress_signal.connect(self.on_batch_progress)
@@ -990,6 +1010,10 @@ class AutoAnnotateDialog(QDialog):
         self.progress_bar.setVisible(False)
         if hasattr(self.main_window, 'filePath') and self.main_window.filePath:
             self.main_window.loadFile(self.main_window.filePath)
+        if hasattr(self.main_window, 'calculate_initial_stats'):
+            self.main_window.calculate_initial_stats()
+        if hasattr(self.main_window, 'fileListView') and self.main_window.fileListView:
+            self.main_window.fileListView.viewport().update()
 
         save_dir = self.cur_xml_dir
         finish_msg = f"批量自动批注完成！成功处理 {processed} 张图片，生成 {total_boxes} 个目标标注 (保存于: {save_dir})"

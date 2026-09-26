@@ -263,11 +263,4 @@ class YoloWriter(object):
         with open(targetFile, 'w', encoding='utf-8') as f:
             f.writelines(lines)
 
-        # Update classes.txt in the same directory
-        classes_file = os.path.join(out_dir, "classes.txt")
-        try:
-            with open(classes_file, 'w', encoding='utf-8') as f:
-                for c in self.classList:
-                    f.write(f"{c}\n")
-        except Exception:
-            pass
+        # Do not automatically litter/overwrite classes.txt in the dataset label directory on every image save

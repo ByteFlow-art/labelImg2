@@ -34,7 +34,7 @@ class Shape(object):
     point_size = 8
     scale = 1.0
 
-    def __init__(self, label=None, line_color=None, difficult=False, paintLabel=False, extra_label=''):
+    def __init__(self, label=None, line_color=None, difficult=False, paintLabel=False, extra_label='', isRotated=False):
         self.label = label
         self.points = []
         self.fill = False
@@ -45,7 +45,7 @@ class Shape(object):
 
         self.direction = 0
         self.center = None
-        self.isRotated = True
+        self.isRotated = isRotated
 
         self.highlightCorner = False
         self.alwaysShowCorner = False
@@ -130,21 +130,31 @@ class Shape(object):
                 self.close()
 
     def copy(self):
-        shape = Shape(self.label, self.line_color, self.difficult, self.paintLabel, self.extra_label)
+        shape = Shape(self.label, getattr(self, 'line_color', None), self.difficult, self.paintLabel, self.extra_label, isRotated=self.isRotated)
         shape.points = [QPointF(p.x(), p.y()) for p in self.points]
         shape.fill = self.fill
         shape.selected = self.selected
         shape.direction = self.direction
         if self.center:
             shape.center = QPointF(self.center.x(), self.center.y())
-        shape.isRotated = self.isRotated
         shape.highlightCorner = self.highlightCorner
         shape.alwaysShowCorner = self.alwaysShowCorner
         shape._closed = self._closed
+        if hasattr(self, 'fill_color') and self.fill_color:
+            shape.fill_color = self.fill_color
+        if hasattr(self, 'line_color') and self.line_color:
+            shape.line_color = self.line_color
         return shape
 
     def close(self):
-        self.center = QPointF((self.points[0].x()+self.points[2].x()) / 2, (self.points[0].y()+self.points[2].y()) / 2)
+        if len(self.points) >= 4:
+            self.center = QPointF((self.points[0].x() + self.points[2].x()) / 2, (self.points[0].y() + self.points[2].y()) / 2)
+        elif len(self.points) >= 2:
+            self.center = QPointF((self.points[0].x() + self.points[1].x()) / 2, (self.points[0].y() + self.points[1].y()) / 2)
+        elif len(self.points) == 1:
+            self.center = QPointF(self.points[0].x(), self.points[0].y())
+        else:
+            self.center = QPointF()
 
         self._closed = True
 
@@ -297,25 +307,6 @@ class Shape(object):
 
     def highlightClear(self):
         self._highlightIndex = None
-
-    def copy(self):
-        shape = Shape("%s" % self.label)
-        shape.points = [p for p in self.points]
-
-        shape.center = self.center
-        shape.direction = self.direction
-        shape.isRotated = self.isRotated
-
-        shape.fill = self.fill
-        shape.selected = self.selected
-        shape._closed = self._closed
-        if self.line_color != Shape.line_color:
-            shape.line_color = self.line_color
-        if self.fill_color != Shape.fill_color:
-            shape.fill_color = self.fill_color
-        shape.difficult = self.difficult
-        shape.extra_label = self.extra_label
-        return shape
 
     def __len__(self):
         return len(self.points)

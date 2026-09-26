@@ -1138,16 +1138,12 @@ class Canvas(QWidget):
             self.undoRedoRequested.emit()
             ev.accept()
             return
-        elif key == Qt.Key_N or txt == 'n':
-            self.hideNormal = not self.hideNormal
-            self.hideNRect.emit(self.hideNormal)
-            self.update()
         elif key == Qt.Key_O or txt == 'o':
             self.canOutOfBounding = not self.canOutOfBounding
         elif key == Qt.Key_B or txt == 'b':
             self.showCenter = not self.showCenter
             self.update()
-        elif key in (Qt.Key_Q, Qt.Key_Delete, Qt.Key_Backspace) or txt == 'q':
+        elif key in (Qt.Key_Q, Qt.Key_Delete) or txt == 'q':
             self.deleteRequested.emit()
             ev.accept()
             return
@@ -1261,6 +1257,10 @@ class Canvas(QWidget):
         self.shapes = []
         self.selectedShapes = []
         self.selectedShape = None
+        self.visible.clear()
+        self.hideNormal = False
+        self.hideRotated = False
+        self._hideBackround = False
         self.repaint()
 
     def loadShapes(self, shapes):
@@ -1291,5 +1291,11 @@ class Canvas(QWidget):
     def resetState(self):
         self.restoreCursor()
         self.pixmap = None
-        #self.localScalePixmap = None
+        self.shapes = []
+        self.selectedShapes = []
+        self.selectedShape = None
+        self.visible.clear()
+        self.hideNormal = False
+        self.hideRotated = False
+        self._hideBackround = False
         self.update()

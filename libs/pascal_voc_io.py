@@ -76,14 +76,14 @@ class PascalVocWriter:
         segmented.text = '0'
         return top
 
-    def addBndBox(self, xmin, ymin, xmax, ymax, name, difficult, extra):
+    def addBndBox(self, xmin, ymin, xmax, ymax, name, difficult=0, extra=""):
         bndbox = {'xmin': xmin, 'ymin': ymin, 'xmax': xmax, 'ymax': ymax}
         bndbox['name'] = name
         bndbox['difficult'] = difficult
         bndbox['extra'] = extra
         self.boxlist.append(bndbox)
 
-    def addRotatedBndBox(self, cx, cy, w, h, angle, name, difficult, extra):
+    def addRotatedBndBox(self, cx, cy, w, h, angle, name, difficult=0, extra=""):
         robndbox = {'cx': cx, 'cy': cy, 'w': w, 'h': h, 'angle': angle}
         robndbox['name'] = name
         robndbox['difficult'] = difficult
