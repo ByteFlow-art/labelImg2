@@ -1100,23 +1100,27 @@ class Canvas(QWidget):
         elif key == Qt.Key_Down and self.selectedShape:
             self.moveOnePixel('Down')
         elif (key == Qt.Key_Z or txt == 'z') and self.selectedShape:
-            self.selectedShape.isRotated = True
-            angle = self.get_dynamic_rotation_angle(1)
-            if not self.rotateOutOfBound(angle):
-                self.selectedShape.rotate(angle)
-                self.shapeMoved.emit() 
-                self.update()
-                deg = abs(angle * 180.0 / math.pi)
-                print(f"[Shortcut Z Terminal] 顺时针旋转标注框 (+{deg:.1f}° 变速调控)", flush=True)
+            if getattr(self.selectedShape, 'isRotated', False):
+                angle = self.get_dynamic_rotation_angle(1)
+                if not self.rotateOutOfBound(angle):
+                    self.selectedShape.rotate(angle)
+                    self.shapeMoved.emit() 
+                    self.update()
+                    deg = abs(angle * 180.0 / math.pi)
+                    print(f"[Shortcut Z Terminal] 顺时针旋转标注框 (+{deg:.1f}° 变速调控)", flush=True)
+            else:
+                print("[提示] 当前选中为标准矩形框(W)，不可旋转；仅旋转框(E)支持旋转", flush=True)
         elif (key == Qt.Key_V or txt == 'v') and self.selectedShape:
-            self.selectedShape.isRotated = True
-            angle = self.get_dynamic_rotation_angle(-1)
-            if not self.rotateOutOfBound(angle):
-                self.selectedShape.rotate(angle)
-                self.shapeMoved.emit()
-                self.update()
-                deg = abs(angle * 180.0 / math.pi)
-                print(f"[Shortcut V Terminal] 逆时针旋转标注框 (-{deg:.1f}° 变速调控)", flush=True)
+            if getattr(self.selectedShape, 'isRotated', False):
+                angle = self.get_dynamic_rotation_angle(-1)
+                if not self.rotateOutOfBound(angle):
+                    self.selectedShape.rotate(angle)
+                    self.shapeMoved.emit()
+                    self.update()
+                    deg = abs(angle * 180.0 / math.pi)
+                    print(f"[Shortcut V Terminal] 逆时针旋转标注框 (-{deg:.1f}° 变速调控)", flush=True)
+            else:
+                print("[提示] 当前选中为标准矩形框(W)，不可旋转；仅旋转框(E)支持旋转", flush=True)
         elif (key == Qt.Key_X or txt == 'x') and self.selectedShape:
             self.selectedShape.increaseLength()
             self.shapeMoved.emit()
@@ -1128,12 +1132,14 @@ class Canvas(QWidget):
             self.update()
             print("[Shortcut C Terminal] 增大选中标注框的宽 (Width +)", flush=True)
         elif (key == Qt.Key_F or txt == 'f') and self.selectedShape:
-            self.selectedShape.isRotated = True
-            if not self.rotateOutOfBound(-math.pi/2):
-                self.selectedShape.rotate(-math.pi/2)
-                self.shapeMoved.emit()
-                self.update()
-                print("[Shortcut F Terminal] 旋转标注框 (-90°)", flush=True)
+            if getattr(self.selectedShape, 'isRotated', False):
+                if not self.rotateOutOfBound(-math.pi/2):
+                    self.selectedShape.rotate(-math.pi/2)
+                    self.shapeMoved.emit()
+                    self.update()
+                    print("[Shortcut F Terminal] 旋转标注框 (-90°)", flush=True)
+            else:
+                print("[提示] 当前选中为标准矩形框(W)，不可旋转；仅旋转框(E)支持旋转", flush=True)
         elif key == Qt.Key_R or txt == 'r':
             self.undoRedoRequested.emit()
             ev.accept()

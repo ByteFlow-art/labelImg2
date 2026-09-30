@@ -246,6 +246,12 @@ class MainWindow(QMainWindow, WindowMixin):
 
         self.default_label = self.labelHist[0] if (self.labelHist and len(self.labelHist) > 0) else "object"
 
+        # 标注框旋转与长宽微调按键并发状态管理 (ZV 与 XC 同时启动互不冲突)
+        self._active_adjust_keys = set()
+        self._adjust_timer = QTimer(self)
+        self._adjust_timer.setInterval(30)
+        self._adjust_timer.timeout.connect(self._on_adjust_timer_tick)
+
         # Create a widget for edit and diffc button
         self.diffcButton = QCheckBox(u'difficult')
         self.diffcButton.setChecked(False)
@@ -886,6 +892,8 @@ class MainWindow(QMainWindow, WindowMixin):
             shape.label = self.labelModel.data(topLeft)
             if sys.version_info < (3, 0, 0):
                 shape.label = shape.label.toPyObject()
+            if shape.label:
+                self.default_label = shape.label
             color = generateColorByText(shape.label)
             item1 = self.labelModel.item(topLeft.row(), 1)
             item0.setBackground(color)
@@ -1169,6 +1177,11 @@ class MainWindow(QMainWindow, WindowMixin):
                 self.labelList.selectRow(index.row())
             else:
                 self.labelList.clearSelection()
+
+        shape = self.canvas.selectedShape
+        if shape and getattr(shape, 'label', None):
+            self.default_label = shape.label
+
         self.actions.delete.setEnabled(selected)
         self.actions.copy.setEnabled(selected)
 
@@ -1442,6 +1455,8 @@ class MainWindow(QMainWindow, WindowMixin):
                     self.canvas.shapes.remove(shape)
                     self.canvas.shapes.append(shape)
                 self.canvas.selectShape(shape)
+                if shape and getattr(shape, 'label', None):
+                    self.default_label = shape.label
                 self.diffcButton.setChecked(shape.difficult)
             finally:
                 self._is_updating_label = False
@@ -1757,49 +1772,15 @@ class MainWindow(QMainWindow, WindowMixin):
                 log_terminal("[Shortcut W Terminal] 触发新建矩形框标注模式 (Draw Box)")
                 self.createShape()
                 return True
-            elif txt == 'x' and not mods and not is_typing_text:
+            elif txt in ('z', 'v', 'x', 'c') and not mods and not is_typing_text:
                 if self.canvas.selectedShape:
-                    self.save_undo_state()
-                    self.canvas.selectedShape.increaseLength()
-                    self.canvas.shapeMoved.emit()
-                    self.canvas.update()
-                    self.setDirty()
-                    log_terminal("[Shortcut X Terminal] 增大选中标注框的长 (Length +)")
-                    return True
-            elif txt == 'c' and not mods and not is_typing_text:
-                if self.canvas.selectedShape:
-                    self.save_undo_state()
-                    self.canvas.selectedShape.increaseWidth()
-                    self.canvas.shapeMoved.emit()
-                    self.canvas.update()
-                    self.setDirty()
-                    log_terminal("[Shortcut C Terminal] 增大选中标注框的宽 (Width +)")
-                    return True
-            elif txt == 'z' and not mods and not is_typing_text:
-                if self.canvas.selectedShape:
-                    self.save_undo_state()
-                    self.canvas.selectedShape.isRotated = True
-                    angle = self.canvas.get_dynamic_rotation_angle(1)
-                    if not self.canvas.rotateOutOfBound(angle):
-                        self.canvas.selectedShape.rotate(angle)
-                        self.canvas.shapeMoved.emit()
-                        self.canvas.update()
-                        self.setDirty()
-                        deg = abs(angle * 180.0 / math.pi)
-                        log_terminal(f"[Shortcut Z Terminal] 顺时针旋转标注框 (+{deg:.1f}° 变速调控)")
-                    return True
-            elif txt == 'v' and not mods and not is_typing_text:
-                if self.canvas.selectedShape:
-                    self.save_undo_state()
-                    self.canvas.selectedShape.isRotated = True
-                    angle = self.canvas.get_dynamic_rotation_angle(-1)
-                    if not self.canvas.rotateOutOfBound(angle):
-                        self.canvas.selectedShape.rotate(angle)
-                        self.canvas.shapeMoved.emit()
-                        self.canvas.update()
-                        self.setDirty()
-                        deg = abs(angle * 180.0 / math.pi)
-                        log_terminal(f"[Shortcut V Terminal] 逆时针旋转标注框 (-{deg:.1f}° 变速调控)")
+                    if not event.isAutoRepeat():
+                        if not self._active_adjust_keys:
+                            self.save_undo_state()
+                        self._active_adjust_keys.add(txt)
+                        self._apply_adjust_key_step(txt)
+                        if not self._adjust_timer.isActive():
+                            self._adjust_timer.start(30)
                     return True
             elif txt == 'r' and not mods and not is_typing_text:
                 self.toggle_undo_redo()
@@ -1809,12 +1790,91 @@ class MainWindow(QMainWindow, WindowMixin):
                 return super(MainWindow, self).eventFilter(obj, event)
             key = event.key()
             txt = event.text().lower() if event.text() else ""
-            if key in (Qt.Key_Z, Qt.Key_V) or txt in ('z', 'v'):
-                if hasattr(self, 'canvas') and self.canvas:
-                    self.canvas._rot_start_time = None
-                    self.canvas._rot_last_time = 0
+            if key == Qt.Key_Z: txt = 'z'
+            elif key == Qt.Key_V: txt = 'v'
+            elif key == Qt.Key_X: txt = 'x'
+            elif key == Qt.Key_C: txt = 'c'
+            if txt in ('z', 'v', 'x', 'c'):
+                self._active_adjust_keys.discard(txt)
+                if txt in ('z', 'v'):
+                    if hasattr(self, 'canvas') and self.canvas:
+                        self.canvas._rot_start_time = None
+                        self.canvas._rot_last_time = 0
+                if not self._active_adjust_keys:
+                    self._adjust_timer.stop()
+                return True
 
         return super(MainWindow, self).eventFilter(obj, event)
+
+    def _apply_adjust_key_step(self, key_char):
+        shape = self.canvas.selectedShape
+        if not shape:
+            return
+        if key_char == 'x':
+            shape.increaseLength(factor=1.05, delta=3.0)
+            self.canvas.shapeMoved.emit()
+            self.canvas.update()
+            self.setDirty()
+            log_terminal("[Shortcut X Terminal] 增大选中标注框的长 (Length +)")
+        elif key_char == 'c':
+            shape.increaseWidth(factor=1.05, delta=3.0)
+            self.canvas.shapeMoved.emit()
+            self.canvas.update()
+            self.setDirty()
+            log_terminal("[Shortcut C Terminal] 增大选中标注框的宽 (Width +)")
+        elif key_char in ('z', 'v'):
+            if not getattr(shape, 'isRotated', False):
+                self.statusBar().showMessage("当前为不可旋转矩形框(W)，无法旋转；仅旋转框(E)支持旋转", 3000)
+                log_terminal("[提示] 当前选中的标注框为标准矩形框(W)，不可旋转。如需旋转请使用 E 键创建旋转框。")
+                return
+            rot_dir = 1 if key_char == 'z' else -1
+            angle = self.canvas.get_dynamic_rotation_angle(rot_dir)
+            if not self.canvas.rotateOutOfBound(angle):
+                shape.rotate(angle)
+                self.canvas.shapeMoved.emit()
+                self.canvas.update()
+                self.setDirty()
+                deg = abs(angle * 180.0 / math.pi)
+                dir_str = "顺时针" if rot_dir == 1 else "逆时针"
+                sign_str = "+" if rot_dir == 1 else "-"
+                log_terminal(f"[Shortcut {key_char.upper()} Terminal] {dir_str}旋转标注框 ({sign_str}{deg:.1f}° 变速调控)")
+
+    def _on_adjust_timer_tick(self):
+        if not self._active_adjust_keys or not self.canvas.selectedShape:
+            self._adjust_timer.stop()
+            self._active_adjust_keys.clear()
+            return
+
+        shape = self.canvas.selectedShape
+        has_changes = False
+
+        # 1. 旋转处理 (Z / V 互不冲突且仅限可旋转框 E)
+        rot_dir = 0
+        if 'z' in self._active_adjust_keys and 'v' not in self._active_adjust_keys:
+            rot_dir = 1
+        elif 'v' in self._active_adjust_keys and 'z' not in self._active_adjust_keys:
+            rot_dir = -1
+
+        if rot_dir != 0:
+            if getattr(shape, 'isRotated', False):
+                angle = self.canvas.get_dynamic_rotation_angle(rot_dir)
+                if not self.canvas.rotateOutOfBound(angle):
+                    shape.rotate(angle)
+                    has_changes = True
+
+        # 2. 尺寸调节处理 (X / C，平滑持续缩放，与旋转同时工作)
+        if 'x' in self._active_adjust_keys:
+            shape.increaseLength(factor=1.015, delta=1.5)
+            has_changes = True
+
+        if 'c' in self._active_adjust_keys:
+            shape.increaseWidth(factor=1.015, delta=1.5)
+            has_changes = True
+
+        if has_changes:
+            self.canvas.shapeMoved.emit()
+            self.canvas.update()
+            self.setDirty()
 
     def keyPressEvent(self, event):
         key = event.key()
@@ -1833,22 +1893,13 @@ class MainWindow(QMainWindow, WindowMixin):
             self.createShape()
             event.accept()
             return
-        elif txt == 'x' and self.canvas.selectedShape:
-            self.save_undo_state()
-            self.canvas.selectedShape.increaseLength()
-            self.canvas.shapeMoved.emit()
-            self.canvas.update()
-            self.setDirty()
-            log_terminal("[Shortcut X Terminal] 增大选中标注框的长 (Length +)")
-            event.accept()
-            return
-        elif txt == 'c' and self.canvas.selectedShape:
-            self.save_undo_state()
-            self.canvas.selectedShape.increaseWidth()
-            self.canvas.shapeMoved.emit()
-            self.canvas.update()
-            self.setDirty()
-            log_terminal("[Shortcut C Terminal] 增大选中标注框的宽 (Width +)")
+        elif txt in ('z', 'v', 'x', 'c') and self.canvas.selectedShape:
+            if not self._active_adjust_keys:
+                self.save_undo_state()
+            self._active_adjust_keys.add(txt)
+            self._apply_adjust_key_step(txt)
+            if not self._adjust_timer.isActive():
+                self._adjust_timer.start(30)
             event.accept()
             return
         elif txt == 'r':
@@ -1864,6 +1915,37 @@ class MainWindow(QMainWindow, WindowMixin):
             event.accept()
             return
         super(MainWindow, self).keyPressEvent(event)
+
+    def keyReleaseEvent(self, event):
+        if event.isAutoRepeat():
+            return super(MainWindow, self).keyReleaseEvent(event)
+        key = event.key()
+        txt = event.text().lower() if event.text() else ""
+        if key == Qt.Key_Z: txt = 'z'
+        elif key == Qt.Key_V: txt = 'v'
+        elif key == Qt.Key_X: txt = 'x'
+        elif key == Qt.Key_C: txt = 'c'
+        if txt in ('z', 'v', 'x', 'c'):
+            self._active_adjust_keys.discard(txt)
+            if txt in ('z', 'v'):
+                if hasattr(self, 'canvas') and self.canvas:
+                    self.canvas._rot_start_time = None
+                    self.canvas._rot_last_time = 0
+            if not self._active_adjust_keys:
+                self._adjust_timer.stop()
+            event.accept()
+            return
+        super(MainWindow, self).keyReleaseEvent(event)
+
+    def changeEvent(self, event):
+        if event.type() == QEvent.ActivationChange and not self.isActiveWindow():
+            self._active_adjust_keys.clear()
+            if hasattr(self, '_adjust_timer'):
+                self._adjust_timer.stop()
+            if hasattr(self, 'canvas') and self.canvas:
+                self.canvas._rot_start_time = None
+                self.canvas._rot_last_time = 0
+        super(MainWindow, self).changeEvent(event)
 
     def resizeEvent(self, event):
         if self.canvas and not self.image.isNull()\

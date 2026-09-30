@@ -237,7 +237,7 @@ class LabelDialog(QDialog):
         main_layout.addWidget(group_box)
 
         # ---------------- 2. 中间标签类别管理面板 ----------------
-        list_box = QGroupBox("2. 标签类别列表 (双击设为默认，支持增删改排)")
+        list_box = QGroupBox("2. 标签类别列表 (支持增删改排)")
         list_layout = QVBoxLayout(list_box)
         list_layout.setContentsMargins(14, 16, 14, 14)
         list_layout.setSpacing(10)
@@ -260,15 +260,10 @@ class LabelDialog(QDialog):
         btn_delete.setObjectName("btn_danger")
         btn_delete.clicked.connect(self.delete_label)
 
-        btn_set_default = QPushButton("设为默认")
-        btn_set_default.setToolTip("将当前选中的标签设为新建标注框时的默认类别")
-        btn_set_default.clicked.connect(self.set_as_default)
-
         edit_layout.addWidget(self.edit, 1)
         edit_layout.addWidget(btn_add)
         edit_layout.addWidget(btn_modify)
         edit_layout.addWidget(btn_delete)
-        edit_layout.addWidget(btn_set_default)
         list_layout.addLayout(edit_layout)
 
         # 列表与排序辅助操作
@@ -414,7 +409,7 @@ class LabelDialog(QDialog):
             self.default_label = labels[0]
 
         for idx, lab in enumerate(labels):
-            self._create_list_item(idx + 1, lab, is_default=(lab == self.default_label))
+            self._create_list_item(idx + 1, lab)
 
         self.update_status()
 
@@ -422,19 +417,9 @@ class LabelDialog(QDialog):
         clean_text = str(label_text).strip()
         item = QListWidgetItem()
         item.setData(Qt.UserRole, clean_text)
-
-        if is_default:
-            item.setText(f"[默认] {index_num}. {clean_text}")
-            font = QFont()
-            font.setBold(True)
-            item.setFont(font)
-            item.setForeground(QBrush(QColor("#1D4ED8")))
-            item.setBackground(QBrush(QColor("#EFF6FF")))
-        else:
-            item.setText(f"{index_num}. {clean_text}")
-            item.setForeground(QBrush(QColor("#1E293B")))
-            item.setBackground(QBrush(QColor("#FFFFFF")))
-
+        item.setText(f"{index_num}. {clean_text}")
+        item.setForeground(QBrush(QColor("#1E293B")))
+        item.setBackground(QBrush(QColor("#FFFFFF")))
         self.listWidget.addItem(item)
         return item
 
@@ -445,20 +430,20 @@ class LabelDialog(QDialog):
             item = self.listWidget.item(i)
             raw = item.data(Qt.UserRole)
             if not raw:
-                raw = re.sub(r'^(\[默认\]\s*)?\d+\.\s*', '', item.text())
+                raw = re.sub(r'^\d+\.\s*', '', item.text())
             raw = str(raw).strip()
             if raw and raw not in labels:
                 labels.append(raw)
         return labels
 
     def refresh_list_display(self):
-        """重新整理序号与默认标签标记"""
+        """重新整理序号与标签展示"""
         labels = self.get_labels()
         selected_row = self.listWidget.currentRow()
         self.listWidget.clear()
 
         for idx, lab in enumerate(labels):
-            self._create_list_item(idx + 1, lab, is_default=(lab == self.default_label))
+            self._create_list_item(idx + 1, lab)
 
         if 0 <= selected_row < self.listWidget.count():
             self.listWidget.setCurrentRow(selected_row)
@@ -468,11 +453,11 @@ class LabelDialog(QDialog):
     def on_item_clicked(self, item):
         raw = item.data(Qt.UserRole)
         if not raw:
-            raw = re.sub(r'^(\[默认\]\s*)?\d+\.\s*', '', item.text())
+            raw = re.sub(r'^\d+\.\s*', '', item.text())
         self.edit.setText(str(raw).strip())
 
     def on_item_double_clicked(self, item):
-        self.set_as_default()
+        self.on_item_clicked(item)
 
     def add_label(self):
         txt = self.edit.text().strip()
@@ -646,8 +631,7 @@ class LabelDialog(QDialog):
 
     def update_status(self):
         count = self.listWidget.count()
-        def_text = self.default_label if self.default_label else "无"
-        self.lbl_status.setText(f"共 {count} 个标签类别 | 当前默认: [{def_text}]")
+        self.lbl_status.setText(f"共 {count} 个标签类别")
 
     def updateListItems(self, listItem):
         """兼容原有调用方法"""
