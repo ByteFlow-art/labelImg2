@@ -33,6 +33,7 @@ from libs.pascal_voc_io import PascalVocReader, XML_EXT
 from libs.labelView import CLabelView, HashableQStandardItem
 from libs.fileView import CFileView
 from libs.cvtlabels2yolo import cvt_lbidata_rotdet
+from libs.toggle_switch import SwitchButton
 
 from ui.train_dialog import TrainDialog
 from ui.auto_annotate_dialog import AutoAnnotateDialog
@@ -101,10 +102,11 @@ class WindowMixin(object):
 
 def detect_project_folders(project_root):
     """
-    智能自动识别项目总文件夹下的图片路径与标签路径:
-    - 图片路径优先识别: images, image, imgs, img, JPEGImages, photos, raw_images 等及其子目录 (如 images/train)
-    - 标签路径优先识别: labels, label, Annotations, annotations, xml, txt 等及其子目录 (如 labels/train)
-    - 若无分离子目录，直接以项目根目录为图片路径并自动关联/创建 labels 目录
+    智能自动识别项目总文件夹下的图片路径与标签路径 (支持重叠多层子目录嵌套):
+    - 图片路径优先识别: images, image, imgs, img, JPEGImages, photos, raw_images 等总目录
+      不提前钻入单一子目录 (如 train)，确保全量扫描选中目录下的所有图片
+    - 标签路径优先识别: labels, label, Annotations, annotations 等总目录
+    - 若无独立子目录，直接以项目根目录为图片路径并自动关联/创建 labels 目录
     返回 (found_images_dir, found_labels_dir)
     """
     if not project_root or not os.path.isdir(project_root):
@@ -116,72 +118,41 @@ def detect_project_folders(project_root):
 
     image_dir_candidates = [
         'images', 'image', 'imgs', 'img', 'JPEGImages', 'photos', 'raw_images',
-        os.path.join('images', 'train'), os.path.join('images', 'val'),
         os.path.join('data', 'images')
     ]
     label_dir_candidates = [
         'labels', 'label', 'Annotations', 'annotations', 'Labels', 'xml', 'txt',
-        os.path.join('labels', 'train'), os.path.join('labels', 'val'),
         os.path.join('data', 'labels')
     ]
 
     found_img_dir = None
     found_lbl_dir = None
 
-    # 1. 查找包含图片的文件夹
-    first_existing_cand = None
+    # 辅助函数：判断目录树中（含各级子目录）是否包含图片文件
+    def folder_has_images(folder_p):
+        if not os.path.isdir(folder_p):
+            return False
+        for _, _, files in os.walk(folder_p):
+            if any(os.path.splitext(f)[1].lower() in img_exts for f in files):
+                return True
+        return False
+
+    # 1. 优先查找专有图片总文件夹 (如 images / img)
     for cand in image_dir_candidates:
         cand_p = os.path.join(project_root, cand)
-        if os.path.isdir(cand_p):
-            if first_existing_cand is None:
-                first_existing_cand = cand_p
-            try:
-                has_imgs = any(os.path.splitext(f)[1].lower() in img_exts for f in os.listdir(cand_p) if os.path.isfile(os.path.join(cand_p, f)))
-                if has_imgs:
-                    found_img_dir = cand_p
-                    break
-                for sub in os.listdir(cand_p):
-                    sub_p = os.path.join(cand_p, sub)
-                    if os.path.isdir(sub_p):
-                        if any(os.path.splitext(f)[1].lower() in img_exts for f in os.listdir(sub_p) if os.path.isfile(os.path.join(sub_p, f))):
-                            found_img_dir = sub_p
-                            break
-                if found_img_dir:
-                    break
-            except Exception:
-                pass
+        if os.path.isdir(cand_p) and folder_has_images(cand_p):
+            found_img_dir = cand_p
+            break
 
-    if not found_img_dir and first_existing_cand:
-        found_img_dir = first_existing_cand
+    # 若未找到专有图片文件夹，检查项目根目录本身及子目录是否包含图片
+    if not found_img_dir and folder_has_images(project_root):
+        found_img_dir = project_root
 
-    if not found_img_dir:
-        try:
-            if any(os.path.splitext(f)[1].lower() in img_exts for f in os.listdir(project_root) if os.path.isfile(os.path.join(project_root, f))):
-                found_img_dir = project_root
-        except Exception:
-            pass
-
-    if not found_img_dir:
-        for root, dirs, files in os.walk(project_root):
-            rel = os.path.relpath(root, project_root)
-            depth = len(rel.split(os.sep)) if rel != '.' else 0
-            if depth > 2:
-                continue
-            if any(os.path.splitext(f)[1].lower() in img_exts for f in files):
-                found_img_dir = root
-                break
-
-    # 2. 查找标签目录
-    img_subname = os.path.basename(found_img_dir) if (found_img_dir and found_img_dir != project_root) else None
-
+    # 2. 查找标签总目录
     for cand in label_dir_candidates:
         cand_p = os.path.join(project_root, cand)
         if os.path.isdir(cand_p):
             found_lbl_dir = cand_p
-            if img_subname and img_subname in ('train', 'val', 'test'):
-                paired_sub = os.path.join(cand_p, img_subname)
-                if os.path.isdir(paired_sub):
-                    found_lbl_dir = paired_sub
             break
 
     if not found_lbl_dir:
@@ -246,11 +217,13 @@ class MainWindow(QMainWindow, WindowMixin):
 
         self.default_label = self.labelHist[0] if (self.labelHist and len(self.labelHist) > 0) else "object"
 
-        # 标注框旋转与长宽微调按键并发状态管理 (ZV 与 XC 同时启动互不冲突)
+        # 标注框旋转与长宽微调按键并发状态管理 (ZV 与 XC 同时启动互不冲突，动态变速调节)
         self._active_adjust_keys = set()
         self._adjust_timer = QTimer(self)
         self._adjust_timer.setInterval(30)
         self._adjust_timer.timeout.connect(self._on_adjust_timer_tick)
+        self._size_start_time = None
+        self._size_last_time = 0.0
 
         # Create a widget for edit and diffc button
         self.diffcButton = QCheckBox(u'difficult')
@@ -390,8 +363,8 @@ class MainWindow(QMainWindow, WindowMixin):
         quit = action('&Quit', self.close,
                       'Ctrl+Q', 'power.svg', u'Quit application')
 
-        open = action('&Open', self.openProjectDialog,
-                      'Ctrl+O', 'icon_open_file.svg', u'Open project root directory (auto-detect images and labels)')
+        openDir = action('&Open Dir', self.openProjectDialog,
+                         'Ctrl+O', 'icon_open_file.svg', u'Open project root directory (auto-detect all images and labels recursively)')
 
         openRecent = action('Open &Recent', self.openRecentProject,
                             'Ctrl+Shift+O', 'icon_open_recent.svg', u'Open last project (auto-detect images and labels)')
@@ -410,9 +383,6 @@ class MainWindow(QMainWindow, WindowMixin):
 
         save = action('&Save', self.saveFileAndRenderList,
                       'Ctrl+S', 'save.svg', u'Save labels to file', enabled=False)
-
-        saveAs = action('&Save As', self.saveFileAs,
-                        'Ctrl+Shift+S', 'save-as.svg', u'Save labels to a different file', enabled=False)
 
         close = action('&Close', self.closeFile, 'Ctrl+W', 'close.svg', u'Close current file')
 
@@ -499,7 +469,7 @@ class MainWindow(QMainWindow, WindowMixin):
         addActions(labelMenu, (edit, delete))
 
         # Store actions for further handling.
-        self.actions = struct(save=save, saveAs=saveAs, open=open, openRecent=openRecent,
+        self.actions = struct(save=save, open=openDir, openDir=openDir, openRecent=openRecent,
                               saveFormat=saveFormat, close=close, resetAll = resetAll,
                               create=create, createSo=createSo, createRo=createRo, delete=delete, 
                               labelAsBack=labelAsBack, deleteLabel=deleteLabel, edit=edit, copy=copy,
@@ -507,14 +477,14 @@ class MainWindow(QMainWindow, WindowMixin):
                               fitWindow=fitWindow, fitWidth=fitWidth, play=play,
                               zoomActions=zoomActions,
                               fileMenuActions=(
-                                  open, openRecent, opendir, changeSavedir, saveFormat, save, saveAs, close, resetAll, quit),
+                                  openDir, openRecent, opendir, changeSavedir, saveFormat, save, close, resetAll, quit),
                               beginner=(),
                               editMenu=(edit, copy, delete,
                                         None),
                               beginnerContext=(create, createSo, createRo, copy, delete, labelAsBack, deleteLabel),
                               onLoadActive=(
                                   close, create),
-                              onShapesPresent=(saveAs,))
+                              onShapesPresent=())
 
         # 保存文件格式类型子菜单 (Save Format)
         saveFormatMenu = QMenu('&Save Format', self)
@@ -567,8 +537,8 @@ class MainWindow(QMainWindow, WindowMixin):
         self.drawCorner.triggered.connect(self.canvas.setDrawCornerState)
         
         addActions(self.menus.file,
-                   (open, self.menus.recentProjects, opendir, changeSavedir, self.menus.saveFormat, 
-                    verify, save, saveAs, resetAll, quit))
+                   (openDir, self.menus.recentProjects, opendir, changeSavedir, self.menus.saveFormat, 
+                    verify, save, resetAll, quit))
 
         addActions(self.menus.help, (showInfo,))
         addActions(self.menus.view, (
@@ -597,7 +567,7 @@ class MainWindow(QMainWindow, WindowMixin):
         addActions(self.menus.ai, (yoloAutoSingleAction, yoloAutoBatchAction, yoloAutoConfigAction, None, yoloTrainAction))
 
         self.tools = self.toolbar('Tools')
-        self.actions.beginner = (open, openRecent, opendir, changeSavedir, saveFormat, verify, save, saveAs, None,
+        self.actions.beginner = (openDir, openRecent, opendir, changeSavedir, saveFormat, verify, save, None,
             create, createSo, createRo, copy, delete, None,
             yoloAutoSingleAction, yoloAutoBatchAction, yoloAutoConfigAction, yoloTrainAction, None,
             zoomIn, zoom, zoomOut, zoomOrg, fitWindow, fitWidth)
@@ -702,11 +672,40 @@ class MainWindow(QMainWindow, WindowMixin):
             if isinstance(btn_rec, QToolButton):
                 btn_rec.setPopupMode(QToolButton.InstantPopup)
 
+        # 增加 Auto Save 专属自适应滑块开关按钮，自包含设计，无需外部文字，自适应水平与垂直工具栏
+        if not hasattr(self, 'autoSaveSwitch') or self.autoSaveSwitch is None:
+            self.autoSaveSwitch = SwitchButton(self, checked=self.autoSaving.isChecked(), orientation=self.tools.orientation())
+            self.autoSaveSwitch.toggled.connect(self.on_auto_save_switch_toggled)
+            self.autoSaving.toggled.connect(self.autoSaveSwitch.setChecked)
+            self.tools.orientationChanged.connect(self.autoSaveSwitch.setOrientation)
+
+        # 插入到工具栏中 save 按钮之后
+        actions_list = self.tools.actions()
+        save_idx = -1
+        for idx, act in enumerate(actions_list):
+            if act == self.actions.save:
+                save_idx = idx
+                break
+        if save_idx >= 0 and save_idx + 1 < len(actions_list):
+            self.tools.insertWidget(actions_list[save_idx + 1], self.autoSaveSwitch)
+        else:
+            self.tools.addWidget(self.autoSaveSwitch)
+
         self.canvas.menus[0].clear()
         addActions(self.canvas.menus[0], menu)
         self.menus.edit.clear()
         actions = (self.actions.create, self.actions.createSo, self.actions.createRo) 
         addActions(self.menus.edit, actions + self.actions.editMenu)
+
+    def on_auto_save_switch_toggled(self, is_checked):
+        self.autoSaving.blockSignals(True)
+        self.autoSaving.setChecked(is_checked)
+        self.autoSaving.blockSignals(False)
+        self.settings[SETTING_AUTO_SAVE] = is_checked
+        self.settings.save()
+        status_text = "开启" if is_checked else "关闭"
+        self.statusBar().showMessage(f"自动保存已{status_text}", 3000)
+        log_terminal(f"[设置] 自动保存功能已{status_text}")
 
     def setDirty(self):
         self.dirty = True
@@ -1014,32 +1013,66 @@ class MainWindow(QMainWindow, WindowMixin):
         valid_items = []
         if isinstance(recent_list, list):
             for item in recent_list:
-                r = item.get('root') if isinstance(item, dict) else item
-                if r and os.path.isdir(r) and r not in [x.get('root') if isinstance(x, dict) else x for x in valid_items]:
-                    valid_items.append(item)
+                if isinstance(item, dict):
+                    img_p = item.get('images')
+                    if img_p and os.path.isdir(img_p):
+                        if not any(x.get('images') == img_p and x.get('labels') == item.get('labels') for x in valid_items):
+                            valid_items.append(item)
+                elif isinstance(item, str) and os.path.isdir(item):
+                    if not any(x.get('images') == item for x in valid_items):
+                        valid_items.append({'root': item, 'images': item, 'labels': os.path.join(item, 'labels')})
 
         if not valid_items:
             empty_act = QAction('(暂无历史项目记录)', self)
             empty_act.setEnabled(False)
             menu.addAction(empty_act)
             menu.addSeparator()
-            browse_act = QAction(newIcon('icon_open_file.svg'), '打开新项目... (Open Project)', self)
+            browse_act = QAction(newIcon('icon_open_file.svg'), '打开新项目... (Open Dir)', self)
             browse_act.triggered.connect(self.openProjectDialog)
             menu.addAction(browse_act)
             return
 
         for i, item in enumerate(valid_items[:10]):
-            r_path = item.get('root') if isinstance(item, dict) else item
-            folder_name = os.path.basename(r_path) or r_path
-            act = QAction(newIcon('icon_open_recent.svg'), f'&{i+1}. {folder_name}   [{r_path}]', self)
-            act.setToolTip(f"打开历史项目总文件夹: {r_path}")
-            act.triggered.connect(partial(self.openProject, r_path))
+            r_path = item.get('root', '')
+            img_p = item.get('images', '')
+            lbl_p = item.get('labels', '')
+            folder_name = os.path.basename(r_path or img_p) or img_p
+
+            rel_img = os.path.basename(img_p) if img_p else "."
+            rel_lbl = os.path.basename(lbl_p) if lbl_p else "."
+
+            act_text = f"&{i+1}. {folder_name}   [图片: {rel_img} | 标签: {rel_lbl}]"
+            act = QAction(newIcon('icon_open_recent.svg'), act_text, self)
+            act.setToolTip(f"项目总目录: {r_path}\n图片路径: {img_p}\n标签保存路径: {lbl_p}")
+            act.triggered.connect(partial(self.openRecentCombination, img_p, lbl_p, r_path))
             menu.addAction(act)
 
         menu.addSeparator()
         clear_act = QAction(newIcon('trash.svg'), '清空历史项目记录 (Clear History)', self)
         clear_act.triggered.connect(self.clearRecentProjects)
         menu.addAction(clear_act)
+
+    def openRecentCombination(self, img_path, lbl_path, root_path=None):
+        """精准恢复历史处理过的 (Images, Labels) 路径组合，避免路径猜测冲突"""
+        if not self.mayContinue():
+            return
+        if not img_path or not os.path.exists(img_path):
+            QMessageBox.warning(self, "路径不存在", f"历史项目图片路径不存在:\n{img_path}")
+            return
+
+        target_root = root_path if (root_path and os.path.exists(root_path)) else os.path.dirname(img_path)
+        self.settings['last_project_root'] = target_root
+        self.settings['last_image_dir'] = img_path
+        self.settings['last_save_dir'] = lbl_path
+        self.settings[SETTING_SAVE_DIR] = lbl_path
+        self.settings[SETTING_LAST_OPEN_DIR] = img_path
+        self.settings.save()
+
+        self.addRecentProject(target_root, img_path, lbl_path)
+        self.importDirImages(img_path, labels_dir=lbl_path)
+
+        folder_name = os.path.basename(target_root or img_path) or img_path
+        self.statusBar().showMessage(f"已恢复打开历史项目 [{folder_name}] | 图片: [{img_path}] | 标签: [{lbl_path}]", 5000)
 
     def clearRecentProjects(self):
         self.settings['recent_projects'] = []
@@ -1088,24 +1121,22 @@ class MainWindow(QMainWindow, WindowMixin):
                     self.current_annotation_format != self.save_format and
                     len(self.canvas.shapes) > 0
                 )
-                if self.dirty is True or format_mismatched:
-                    if len(self.canvas.shapes) == 0:
-                        prev_file = self.fileModel.data(previous, Qt.EditRole)
-                        reply = QMessageBox.question(
-                            self,
-                            "保存空标注确认",
-                            f"图片 [{os.path.basename(prev_file or self.filePath or '')}] 未绘制任何标注框。\n是否确认保存为空标注（负样本/背景图）文件？",
-                            QMessageBox.Yes | QMessageBox.No,
-                            QMessageBox.Yes
-                        )
-                        if reply == QMessageBox.Yes:
-                            self.markFileSavedInList(previous, 0)
-                            self.saveFile(prompt_empty=False)
-                        else:
-                            self.setClean()
-                    else:
+                prev_file = self.fileModel.data(previous, Qt.EditRole) if previous.isValid() else self.filePath
+                prev_name = os.path.basename(prev_file or self.filePath or '')
+
+                if len(self.canvas.shapes) == 0:
+                    # 没做任何处理/无标注框时，点击下一张触发自动保存：做出清晰提示并自动保存对应格式的空标签文件
+                    if previous.isValid() and self.filePath:
+                        self.saveFile(prompt_empty=False)
+                        self.markFileSavedInList(previous, 0)
+                        self.statusBar().showMessage(f"【自动保存】图片 [{prev_name}] 无标注框，已自动保存空标签文件 (负样本)", 3500)
+                        log_terminal(f"[自动保存] 图片 [{prev_name}] 无标注框，已自动生成空标签文件")
+                else:
+                    if self.dirty is True or format_mismatched:
                         self.markFileSavedInList(previous, len(self.canvas.shapes))
                         self.saveFile(prompt_empty=False)
+                        self.statusBar().showMessage(f"【自动保存】已保存图片 [{prev_name}] ({len(self.canvas.shapes)} 个标注框)", 3000)
+                        log_terminal(f"[自动保存] 图片 [{prev_name}] 已自动保存 {len(self.canvas.shapes)} 个标注框")
             else:
                 self.changeSavedirDialog()
                 return
@@ -1264,11 +1295,6 @@ class MainWindow(QMainWindow, WindowMixin):
     def addLabel(self, shape):
         shape.paintLabel = self.paintLabelsOption.isChecked()
 
-        if shape.label and shape.label not in self.labelHist:
-            self.labelHist.append(shape.label)
-            if hasattr(self, 'labelList') and self.labelList:
-                self.labelList.updateLabelList(self.labelHist)
-
         item0 = HashableQStandardItem(shape.label)
         item1 = QStandardItem(shape.extra_label)
         color = generateColorByText(shape.label)
@@ -1367,10 +1393,6 @@ class MainWindow(QMainWindow, WindowMixin):
                 shape.fill_color = generateColorByText(label)
             
             shape.alwaysShowCorner = self.drawCorner.isChecked()
-
-            if not label in self.labelHist:
-                self.labelHist.append(label)
-                self.labelList.updateLabelList(self.labelHist)
 
             self.addLabel(shape)
 
@@ -1811,17 +1833,19 @@ class MainWindow(QMainWindow, WindowMixin):
         if not shape:
             return
         if key_char == 'x':
-            shape.increaseLength(factor=1.05, delta=3.0)
+            shape.increaseLength(factor=1.02, delta=2.0)
             self.canvas.shapeMoved.emit()
             self.canvas.update()
             self.setDirty()
-            log_terminal("[Shortcut X Terminal] 增大选中标注框的长 (Length +)")
+            box_type = "旋转框(E)" if getattr(shape, 'isRotated', False) else "普通框(W)"
+            log_terminal(f"[Shortcut X Terminal] 增大选中{box_type}的长 (Length +)")
         elif key_char == 'c':
-            shape.increaseWidth(factor=1.05, delta=3.0)
+            shape.increaseWidth(factor=1.02, delta=2.0)
             self.canvas.shapeMoved.emit()
             self.canvas.update()
             self.setDirty()
-            log_terminal("[Shortcut C Terminal] 增大选中标注框的宽 (Width +)")
+            box_type = "旋转框(E)" if getattr(shape, 'isRotated', False) else "普通框(W)"
+            log_terminal(f"[Shortcut C Terminal] 增大选中{box_type}的宽 (Width +)")
         elif key_char in ('z', 'v'):
             if not getattr(shape, 'isRotated', False):
                 self.statusBar().showMessage("当前为不可旋转矩形框(W)，无法旋转；仅旋转框(E)支持旋转", 3000)
@@ -1843,12 +1867,14 @@ class MainWindow(QMainWindow, WindowMixin):
         if not self._active_adjust_keys or not self.canvas.selectedShape:
             self._adjust_timer.stop()
             self._active_adjust_keys.clear()
+            self._size_start_time = None
             return
 
         shape = self.canvas.selectedShape
         has_changes = False
+        now = time.time()
 
-        # 1. 旋转处理 (Z / V 互不冲突且仅限可旋转框 E)
+        # 1. 旋转处理 (Z / V 互不冲突且仅限可旋转框 E，动态平滑加速上限至 4.2°)
         rot_dir = 0
         if 'z' in self._active_adjust_keys and 'v' not in self._active_adjust_keys:
             rot_dir = 1
@@ -1862,14 +1888,25 @@ class MainWindow(QMainWindow, WindowMixin):
                     shape.rotate(angle)
                     has_changes = True
 
-        # 2. 尺寸调节处理 (X / C，平滑持续缩放，与旋转同时工作)
-        if 'x' in self._active_adjust_keys:
-            shape.increaseLength(factor=1.015, delta=1.5)
-            has_changes = True
+        # 2. 尺寸动态调节处理 (X / C，动态速度平滑扩充，固定框 W 与旋转框 E 均完美支持)
+        if 'x' in self._active_adjust_keys or 'c' in self._active_adjust_keys:
+            if getattr(self, '_size_start_time', None) is None:
+                self._size_start_time = now
+            elapsed = now - self._size_start_time
+            t_ratio = min(1.0, elapsed / 1.5)
+            # 动态 factor 从 1.015 加速至 1.045，delta 从 1.5 加速至 4.5
+            dyn_factor = 1.015 + (1.045 - 1.015) * t_ratio
+            dyn_delta = 1.5 + (4.5 - 1.5) * t_ratio
 
-        if 'c' in self._active_adjust_keys:
-            shape.increaseWidth(factor=1.015, delta=1.5)
-            has_changes = True
+            if 'x' in self._active_adjust_keys:
+                shape.increaseLength(factor=dyn_factor, delta=dyn_delta)
+                has_changes = True
+
+            if 'c' in self._active_adjust_keys:
+                shape.increaseWidth(factor=dyn_factor, delta=dyn_delta)
+                has_changes = True
+        else:
+            self._size_start_time = None
 
         if has_changes:
             self.canvas.shapeMoved.emit()
@@ -1931,6 +1968,8 @@ class MainWindow(QMainWindow, WindowMixin):
                 if hasattr(self, 'canvas') and self.canvas:
                     self.canvas._rot_start_time = None
                     self.canvas._rot_last_time = 0
+            if 'x' not in self._active_adjust_keys and 'c' not in self._active_adjust_keys:
+                self._size_start_time = None
             if not self._active_adjust_keys:
                 self._adjust_timer.stop()
             event.accept()
@@ -1940,6 +1979,7 @@ class MainWindow(QMainWindow, WindowMixin):
     def changeEvent(self, event):
         if event.type() == QEvent.ActivationChange and not self.isActiveWindow():
             self._active_adjust_keys.clear()
+            self._size_start_time = None
             if hasattr(self, '_adjust_timer'):
                 self._adjust_timer.stop()
             if hasattr(self, 'canvas') and self.canvas:
@@ -2297,7 +2337,7 @@ class MainWindow(QMainWindow, WindowMixin):
     def openProjectDialog(self):
         if not self.mayContinue():
             return
-        log_terminal("[Shortcut Ctrl+O Terminal] 触发打开项目总文件夹选择窗口")
+        log_terminal("[Shortcut Ctrl+O Terminal] 触发打开项目总文件夹 (Open Dir)")
         default_open_dir_path = (
             self.settings.get('last_project_root', None)
             or self.settings.get('last_image_dir', None)
@@ -2309,7 +2349,7 @@ class MainWindow(QMainWindow, WindowMixin):
 
         target_dir = QFileDialog.getExistingDirectory(
             self,
-            "打开项目总文件夹 (Open Project Directory)",
+            "打开项目总文件夹 (Open Dir)",
             default_open_dir_path,
             QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks
         )
@@ -2326,21 +2366,21 @@ class MainWindow(QMainWindow, WindowMixin):
         target_dir = os.path.abspath(target_dir)
         img_dir, lbl_dir = detect_project_folders(target_dir)
 
-        img_exts = {'.jpg', '.jpeg', '.png', '.bmp', '.webp', '.tif', '.tiff'}
-        all_imgs = [f for f in os.listdir(img_dir) if os.path.splitext(f)[1].lower() in img_exts] if (img_dir and os.path.isdir(img_dir)) else []
+        # 递归扫描选中文件夹下的所有包含图片 (全面兼顾多层子目录嵌套)
+        all_imgs = self.scanAllImages(img_dir) if (img_dir and os.path.isdir(img_dir)) else []
 
         if not all_imgs:
             reply = QMessageBox.question(
                 self,
                 "未发现图片",
-                f"在识别到的图片目录中:\n{img_dir}\n未发现常见格式的图片文件。\n是否仍要载入该项目？",
+                f"在识别到的图片目录及子目录中:\n{img_dir}\n未发现常见格式的图片文件。\n是否仍要载入该项目？",
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.Yes
             )
             if reply != QMessageBox.Yes:
                 return
 
-        # 记录项目信息与最近记录
+        # 记录项目信息与最近记录 (长期在同一位置保存不重复记录)
         self.settings['last_project_root'] = target_dir
         self.settings['last_image_dir'] = img_dir
         self.settings['last_save_dir'] = lbl_dir
@@ -2356,7 +2396,7 @@ class MainWindow(QMainWindow, WindowMixin):
         rel_img = os.path.relpath(img_dir, target_dir) if img_dir != target_dir else "."
         rel_lbl = os.path.relpath(lbl_dir, target_dir) if lbl_dir != target_dir else "."
         self.statusBar().showMessage(
-            f"已打开项目 [{os.path.basename(target_dir)}] | 图片路径: [{rel_img}] ({len(all_imgs)} 张) | 标签路径: [{rel_lbl}]",
+            f"已打开项目 [{os.path.basename(target_dir)}] | 图片包含: [{rel_img}] (共 {len(all_imgs)} 张) | 标签关联: [{rel_lbl}]",
             8000
         )
 
@@ -2393,11 +2433,30 @@ class MainWindow(QMainWindow, WindowMixin):
             self.menus.recentProjects.exec_(QCursor.pos())
 
     def addRecentProject(self, root, images, labels):
+        """记录项目正确处理过的 Images 和 Labels 路径组合，长期在同一位置保存不重复记录"""
+        if not images or not os.path.exists(images):
+            return
         recent_list = self.settings.get('recent_projects', [])
         if not isinstance(recent_list, list):
             recent_list = []
-        new_entry = {'root': root, 'images': images, 'labels': labels}
-        recent_list = [item for item in recent_list if (item.get('root') if isinstance(item, dict) else item) != root]
+
+        abs_root = os.path.abspath(root) if root else os.path.abspath(images)
+        abs_img = os.path.abspath(images)
+        abs_lbl = os.path.abspath(labels) if labels else abs_img
+
+        new_entry = {'root': abs_root, 'images': abs_img, 'labels': abs_lbl}
+
+        def is_match(item):
+            if not isinstance(item, dict):
+                return item == abs_root or item == abs_img
+            return (item.get('images') == abs_img and item.get('labels') == abs_lbl) or (item.get('root') == abs_root and item.get('images') == abs_img)
+
+        # 若首项已经是当前位置（同一位置长期保存），更新后无需重复重载菜单
+        if recent_list and is_match(recent_list[0]):
+            recent_list[0] = new_entry
+            return
+
+        recent_list = [item for item in recent_list if not is_match(item)]
         recent_list.insert(0, new_entry)
         if len(recent_list) > 10:
             recent_list = recent_list[:10]
@@ -2443,7 +2502,7 @@ class MainWindow(QMainWindow, WindowMixin):
         savedPath = os.path.join(imgFileDir, savedFileName)
         self._saveFile(savedPath)
 
-    def saveFile(self, _value=False, prompt_empty=True):
+    def saveFile(self, _value=False, prompt_empty=False):
         if hasattr(self, 'canvas') and len(self.canvas.shapes) == 0 and getattr(self, 'filePath', None) and prompt_empty:
             reply = QMessageBox.question(
                 self,
@@ -2475,8 +2534,6 @@ class MainWindow(QMainWindow, WindowMixin):
             self.saveLocal(self.filePath)
         return True
 
-            
-
     def removeFile(self):
         if self.defaultSaveDir is not None and len(self.defaultSaveDir):
             if self.filePath:
@@ -2498,30 +2555,13 @@ class MainWindow(QMainWindow, WindowMixin):
                     pass
 
     def saveFileAndRenderList(self, _value=False):
-        self.saveFile(_value=_value)
+        """Save功能直接保存当前做的所有任务，不弹另存为对话框"""
+        self.saveFile(_value=_value, prompt_empty=False)
         cur = self.filesm.currentIndex()
-        self.fileModel.setData(cur, len(self.canvas.shapes), Qt.BackgroundRole)
-
-    def saveFileAs(self, _value=False):
-        assert not self.image.isNull(), "cannot save empty image"
-        self._saveFile(self.saveFileDialog())
-
-    def saveFileDialog(self):
-        from libs.annotation_io import get_format_ext
-        ext = get_format_ext(self.save_format)
-        caption = '%s - Choose File' % __appname__
-        filters = f'Annotation File (*{ext})'
-        openDialogPath = self.currentPath()
-        dlg = QFileDialog(self, caption, openDialogPath, filters)
-        dlg.setDefaultSuffix(ext[1:])
-        dlg.setAcceptMode(QFileDialog.AcceptSave)
-        filenameWithoutExtension = os.path.splitext(self.filePath)[0]
-        dlg.selectFile(filenameWithoutExtension)
-        dlg.setOption(QFileDialog.DontUseNativeDialog, False)
-        if dlg.exec_():
-            fullFilePath = dlg.selectedFiles()[0]
-            return os.path.splitext(fullFilePath)[0] # Return file path without the extension.
-        return ''
+        if cur.isValid():
+            self.fileModel.setData(cur, len(self.canvas.shapes), Qt.BackgroundRole)
+        self.statusBar().showMessage(f"已成功保存当前标注: {os.path.basename(self.filePath or '')}", 3000)
+        log_terminal(f"[Shortcut Ctrl+S] 已保存标注: {os.path.basename(self.filePath or '')}")
 
     def _saveFile(self, annotationFilePath):
         if annotationFilePath and self.saveLabels(annotationFilePath):
@@ -2564,6 +2604,11 @@ class MainWindow(QMainWindow, WindowMixin):
                     self._xml_stats_cache.pop(self.filePath, None)
             self.update_stats()
 
+            # 记录正确处理保存过的图片与标签路径组合 (长期在同一位置保存不重复记录)
+            if hasattr(self, 'dirname') and self.dirname and hasattr(self, 'defaultSaveDir') and self.defaultSaveDir:
+                root_cand = self.settings.get('last_project_root', self.dirname)
+                self.addRecentProject(root_cand, self.dirname, self.defaultSaveDir)
+
 
 
     def closeFile(self, _value=False):
@@ -2573,7 +2618,6 @@ class MainWindow(QMainWindow, WindowMixin):
         self.setClean()
         self.toggleActions(False)
         self.canvas.setEnabled(False)
-        self.actions.saveAs.setEnabled(False)
 
     def resetAll(self):
         self.settings.reset()

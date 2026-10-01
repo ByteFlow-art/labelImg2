@@ -1155,7 +1155,7 @@ class Canvas(QWidget):
             return
 
     def get_dynamic_rotation_angle(self, direction=1):
-        """变速旋转调控：随按键长按时长平滑加速，2秒内从 1.0° 渐进至 1.5°"""
+        """变速旋转调控：随按键长按时长平滑加速，1.5秒内从 1.0° 渐进至 4.2° (显著提升旋转上限)"""
         import math as _math
         now = time.time()
         last_t = getattr(self, '_rot_last_time', 0.0)
@@ -1171,10 +1171,10 @@ class Canvas(QWidget):
         # 计算从首次按下到现在的持续时长（秒）
         elapsed = now - start_t
 
-        # 变速区间：1.0°→1.5°，2 秒内线性达到峰值
+        # 变速区间：1.0°→4.2°，1.5 秒内平滑达到峰值
         base_deg = 1.0
-        max_deg  = 1.5
-        ramp_sec = 2.0
+        max_deg  = 4.2
+        ramp_sec = 1.5
         t_ratio = min(1.0, elapsed / ramp_sec)
         deg = base_deg + (max_deg - base_deg) * t_ratio
         return _math.radians(deg) * direction

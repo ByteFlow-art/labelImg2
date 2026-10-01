@@ -352,9 +352,9 @@ class LabelDialog(QDialog):
 
             display_name = f"{fname}  ({count} 类)"
             self.groupCombo.addItem(display_name, fpath)
-
-            if prefer_path and os.path.abspath(fpath) == prefer_path:
-                target_idx = idx
+            if prefer_file:
+                if (prefer_path and os.path.abspath(fpath) == prefer_path) or (os.path.basename(fpath).lower() == os.path.basename(str(prefer_file)).lower()):
+                    target_idx = idx
 
         self._block_group_change = False
 
@@ -638,11 +638,13 @@ class LabelDialog(QDialog):
         self.set_labels(listItem or [])
 
     def updateData(self, listItem, default_label=None, current_file=None):
-        """完整更新数据接口"""
+        """完整更新数据接口，严格区分 data 目录下的标签组"""
         if current_file and os.path.isfile(current_file):
             self.scan_data_dir(prefer_file=current_file)
         else:
-            self.set_labels(listItem or [], default_label=default_label)
+            self.scan_data_dir()
+            if self.groupCombo.count() == 0 and listItem:
+                self.set_labels(listItem or [], default_label=default_label)
 
     def validate(self):
         labels = self.get_labels()
