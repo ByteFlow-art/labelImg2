@@ -7,12 +7,57 @@ import os
 import platform
 import re
 import sys
+
+# Ensure application root directory is at the head of sys.path
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
+
 import subprocess
 import math
+import traceback
 import xml.etree.ElementTree as ET
 from functools import partial
 from collections import defaultdict, OrderedDict
 
+# -------------------------------------------------------------
+# Global Crash Interceptor (Windows 原生防闪退弹窗拦截网)
+# -------------------------------------------------------------
+def _native_crash_handler(exc_type, exc_value, exc_tb):
+    tb_str = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+    try:
+        sys.stderr.write(tb_str + "\n")
+        sys.stderr.flush()
+    except Exception:
+        pass
+    if platform.system() == 'Windows':
+        try:
+            import ctypes
+            err_title = "LabelImg2 启动异常"
+            err_content = (
+                f"LabelImg2 在启动或运行过程中捕获到异常：\n\n"
+                f"【异常类型】{exc_type.__name__}\n"
+                f"【错误信息】{exc_value}\n\n"
+                f"【可能原因】\n"
+                f"1. 缺少核心运行依赖库（如 PyQt5 / OpenCV / Pillow / lxml / pyyaml 等）；\n"
+                f"2. 请在软件安装目录下双击运行 'setup_env.bat' 自动配置/修复运行环境。\n\n"
+                f"详细异常调用栈 (前 1000 字符)：\n{tb_str[:1000]}"
+            )
+            ctypes.windll.user32.MessageBoxW(0, err_content, err_title, 0x10)
+        except Exception:
+            pass
+
+sys.excepthook = _native_crash_handler
+
+try:
+    import yaml
+except ImportError:
+    yaml = None
+
+try:
+    import yamlloader
+except ImportError:
+    yamlloader = None
 
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *

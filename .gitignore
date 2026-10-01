@@ -37,6 +37,7 @@ env.bak/
 venv.bak/
 python_embed/
 python_embed.zip
+python_runtime/
 
 # Model Training & Inference Artifacts (Ultralytics / YOLO)
 runs/

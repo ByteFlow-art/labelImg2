@@ -1,13 +1,18 @@
 import os
 import shutil
 import random
-import cv2
-import numpy as np
+
 def make_yolo_dirs(basedir, tag = 'train'):
     os.makedirs(os.path.join(basedir, 'images', tag), exist_ok=True)
     os.makedirs(os.path.join(basedir, 'labels', tag), exist_ok=True)
 
 def cvt_lbidata_rotdet(lbi_data_dir, all_shapes_map, yolo_class_map, yolo_data_dir, tag = 'train', format = 'box'):
+    try:
+        import cv2
+        import numpy as np
+    except ImportError as e:
+        raise RuntimeError(f"导出 YOLO 格式需要 OpenCV 与 NumPy 依赖库: {e}。请运行 setup_env.bat 自动配置运行环境。")
+
     make_yolo_dirs(yolo_data_dir, tag=tag)
 
     f_train_list = open(os.path.join(os.path.join(yolo_data_dir, '{}_list.txt'.format(tag,))), 'w', encoding='utf8')
