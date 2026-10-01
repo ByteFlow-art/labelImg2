@@ -20,6 +20,22 @@ if not exist "%SCRIPT_DIR%\%APP_FILE%" (
 
 set "TARGET_PYTHON="
 
+REM 0. Check application dedicated runtime (python_runtime)
+if exist "%SCRIPT_DIR%\python_runtime\pythonw.exe" (
+    "%SCRIPT_DIR%\python_runtime\pythonw.exe" -c "import PyQt5" >nul 2>&1
+    if !errorlevel! EQU 0 (
+        start "" "%SCRIPT_DIR%\python_runtime\pythonw.exe" "%SCRIPT_DIR%\%APP_FILE%"
+        exit /b 0
+    )
+)
+if exist "%SCRIPT_DIR%\python_runtime\python.exe" (
+    "%SCRIPT_DIR%\python_runtime\python.exe" -c "import PyQt5" >nul 2>&1
+    if !errorlevel! EQU 0 (
+        start "" "%SCRIPT_DIR%\python_runtime\python.exe" "%SCRIPT_DIR%\%APP_FILE%"
+        exit /b 0
+    )
+)
+
 REM 1. Check local virtual environment (.venv)
 if exist "%SCRIPT_DIR%\.venv\Scripts\pythonw.exe" (
     "%SCRIPT_DIR%\.venv\Scripts\pythonw.exe" -c "import PyQt5" >nul 2>&1
@@ -236,6 +252,14 @@ echo.
 
 if exist "%SCRIPT_DIR%\setup_env.bat" (
     call "%SCRIPT_DIR%\setup_env.bat" --auto
+    if exist "%SCRIPT_DIR%\python_runtime\pythonw.exe" (
+        start "" "%SCRIPT_DIR%\python_runtime\pythonw.exe" "%SCRIPT_DIR%\%APP_FILE%"
+        exit /b 0
+    )
+    if exist "%SCRIPT_DIR%\python_runtime\python.exe" (
+        start "" "%SCRIPT_DIR%\python_runtime\python.exe" "%SCRIPT_DIR%\%APP_FILE%"
+        exit /b 0
+    )
     if exist "%SCRIPT_DIR%\.venv\Scripts\pythonw.exe" (
         start "" "%SCRIPT_DIR%\.venv\Scripts\pythonw.exe" "%SCRIPT_DIR%\%APP_FILE%"
         exit /b 0

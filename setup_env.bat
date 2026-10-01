@@ -27,8 +27,14 @@ echo.
 
 echo [Step 1/5] Detecting Python / Conda runtime environment...
 
+REM 0. Check application dedicated runtime (python_runtime)
+if exist "%SCRIPT_DIR%\python_runtime\python.exe" (
+    set "PYTHON_EXE=%SCRIPT_DIR%\python_runtime\python.exe"
+    echo [OK] Found dedicated Python runtime: python_runtime\python.exe
+)
+
 REM 1. Check local virtual environment (.venv)
-if exist "%SCRIPT_DIR%\.venv\Scripts\python.exe" (
+if not defined PYTHON_EXE if exist "%SCRIPT_DIR%\.venv\Scripts\python.exe" (
     set "PYTHON_EXE=%SCRIPT_DIR%\.venv\Scripts\python.exe"
     echo [OK] Found local virtual environment: .venv\Scripts\python.exe
 )
@@ -172,8 +178,61 @@ if not defined PYTHON_EXE (
 
 if not defined PYTHON_EXE (
     echo.
-    echo [WARNING] No Python 3.8+ or Conda runtime environment detected.
-    echo Please download and install Python from: https://www.python.org/downloads/
+    echo [Step 1/5] No local Python runtime detected on this system.
+    echo [*] Automatically downloading and configuring portable Python 3.10 runtime...
+    echo [*] Destination: "%SCRIPT_DIR%\python_runtime"
+    echo [*] Connecting to high-speed mirror (Huawei Cloud / npmmirror), please wait...
+    
+    set "PY_INSTALLER_TMP=%TEMP%\labelimg2_py_setup_%RANDOM%.exe"
+    set "PY_TARGET_DIR=%SCRIPT_DIR%\python_runtime"
+    
+    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+        "$urls = @(" ^
+        "    'https://mirrors.huaweicloud.com/python/3.10.11/python-3.10.11-amd64.exe'," ^
+        "    'https://registry.npmmirror.com/-/binary/python/3.10.11/python-3.10.11-amd64.exe'," ^
+        "    'https://www.python.org/ftp/python/3.10.11/python-3.10.11-amd64.exe'" ^
+        ");" ^
+        "$out = $env:PY_INSTALLER_TMP;" ^
+        "$downloaded = $false;" ^
+        "foreach ($u in $urls) {" ^
+        "    try {" ^
+        "        Write-Host ('[*] Connecting to: ' + $u);" ^
+        "        if (Get-Command curl.exe -ErrorAction SilentlyContinue) {" ^
+        "            & curl.exe -L -s --connect-timeout 10 $u -o $out;" ^
+        "        } else {" ^
+        "            $wc = New-Object System.Net.WebClient;" ^
+        "            $wc.Headers.Add('User-Agent', 'Mozilla/5.0');" ^
+        "            $wc.DownloadFile($u, $out);" ^
+        "        }" ^
+        "        if ((Test-Path $out) -and ((Get-Item $out).Length -gt 20000000)) {" ^
+        "            $downloaded = $true;" ^
+        "            Write-Host '[OK] Download completed successfully.';" ^
+        "            break;" ^
+        "        }" ^
+        "    } catch {}" ^
+        "}" ^
+        "if (-not $downloaded) { exit 1; }"
+        
+    if exist "!PY_INSTALLER_TMP!" (
+        echo [*] Installing portable Python 3.10 runtime silently, please wait...
+        powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+            "$proc = Start-Process -FilePath $env:PY_INSTALLER_TMP -ArgumentList @('/quiet', 'InstallAllUsers=0', ('TargetDir=' + $env:PY_TARGET_DIR), 'PrependPath=0', 'Include_pip=1', 'Include_tcltk=0', 'Include_test=0', 'Shortcuts=0') -Wait -PassThru;" ^
+            "exit $proc.ExitCode"
+            
+        del /f /q "!PY_INSTALLER_TMP!" >nul 2>&1
+        
+        if exist "!PY_TARGET_DIR!\python.exe" (
+            set "PYTHON_EXE=!PY_TARGET_DIR!\python.exe"
+            echo [OK] Portable Python runtime successfully deployed: !PYTHON_EXE!
+        )
+    )
+)
+
+if not defined PYTHON_EXE (
+    echo.
+    echo [ERROR] Failed to detect or automatically deploy Python runtime.
+    echo Please ensure your computer is connected to the internet, or install Python 3.8+:
+    echo https://www.python.org/downloads/
     echo Make sure to check "Add Python to PATH" during installation.
     echo.
     if "%IS_AUTO_MODE%"=="0" pause
