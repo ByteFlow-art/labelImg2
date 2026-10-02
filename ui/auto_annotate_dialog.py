@@ -589,10 +589,10 @@ class AutoAnnotateDialog(QDialog):
             safe_print(f"[YOLO Model Center Error] 模型载入异常: {err_str}")
             if "ultralytics" in err_str.lower() or "torch" in err_str.lower():
                 hint = (
-                    "当前环境尚未安装 AI 模型推理扩展依赖 (Ultralytics / PyTorch)。\n\n"
+                    "当前环境尚未安装 AI 模型推理依赖 (Ultralytics / PyTorch)。\n\n"
                     "如需启用 YOLOv8/YOLO26 自动标注功能，请在命令行中执行：\n"
-                    "pip install -r requirements-ai.txt\n\n"
-                    "日常手动标注（Pascal VOC / YOLO / DOTA）无需安装该组件。"
+                    "pip install -r requirements.txt\n\n"
+                    "或运行安装目录下的 setup_env.bat 自动配置完整运行环境。"
                 )
                 if not silent:
                     QMessageBox.warning(self, "AI 组件未安装", hint)

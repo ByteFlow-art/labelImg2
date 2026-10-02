@@ -116,13 +116,10 @@
 conda create -n labelimg2 python=3.10 -y
 conda activate labelimg2
 
-# 2. 安装核心基础标注依赖 (极速专线安装，仅占约 150MB)
+# 2. 安装完整运行依赖 (PyQt5, OpenCV, Pillow, lxml, PyTorch, Ultralytics)
 pip install -r requirements.txt -i https://mirrors.cloud.tencent.com/pypi/simple
 
-# 3. (可选) 如需使用 YOLOv8/YOLO26 自动批注与模型训练，安装 AI 扩展包：
-pip install -r requirements-ai.txt -i https://mirrors.cloud.tencent.com/pypi/simple
-
-# 4. 启动 LabelImg2 工作台
+# 3. 启动 LabelImg2 工作台
 python labelImg.py
 ```
 

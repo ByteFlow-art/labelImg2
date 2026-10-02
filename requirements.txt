@@ -1,7 +1,21 @@
-pyqt5>=5.15.0
+# ==============================================================================
+# LabelImg2 - Unified Dependencies Specification (统一运行与扩展依赖规范)
+# 支持完整的图形界面标注、图像解析、XML/YOLO格式转换，以及 YOLOv8/YOLO26 模型自动标注与训练
+#
+# 一键安装命令 (国内推荐腾讯云高速镜像):
+# pip install -r requirements.txt -i https://mirrors.cloud.tencent.com/pypi/simple
+# ==============================================================================
+
+# 1. 核心图形界面与标注格式解析依赖
+PyQt5>=5.15.0
 opencv-python-headless>=4.7.0
 Pillow>=9.5.0
 lxml>=4.9.0
 pyyaml>=6.0.0
 yamlloader>=0.5.5
 numpy>=1.23.0
+
+# 2. AI 智能模型中心、自动标注引擎与深度学习训练扩展依赖
+ultralytics>=8.0.0
+torch>=2.0.0
+torchvision>=0.15.0

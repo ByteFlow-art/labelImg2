@@ -394,32 +394,25 @@ REM ----------------------------------------------------------------------------
 REM Step 4/5: Installing core dependencies (PyQt5, OpenCV, Pillow, lxml, pyyaml, numpy)
 REM ------------------------------------------------------------------------------
 echo.
-echo [Step 4/5] Checking and installing core dependencies (PyQt5, OpenCV, Pillow, lxml, pyyaml, numpy)...
+echo [Step 4/5] Checking and installing unified dependencies from requirements.txt...
 
-REM Fast check: If already present (e.g. offline portable bundle), skip download!
-"!RUN_PYTHON!" -c "import PyQt5, cv2, PIL, lxml, yaml, numpy" >nul 2>&1
+REM Fast check: If already present, skip download!
+"!RUN_PYTHON!" -c "import PyQt5, cv2, PIL, lxml, yaml, numpy, torch, ultralytics" >nul 2>&1
 if !errorlevel! EQU 0 (
-    echo [OK] All core dependencies are already pre-installed and verified!
+    echo [OK] All unified dependencies are already pre-installed and verified!
     goto verify_step
 )
 
-echo [*] Installing GUI and XML parsers (PyQt5, lxml, Pillow, pyyaml, yamlloader)...
-"!RUN_PYTHON!" -m pip install "pyqt5>=5.15.0" "lxml>=4.9.0" "Pillow>=9.5.0" "pyyaml>=6.0.0" "yamlloader>=0.5.5" -i !PIP_INDEX! !TRUSTED_HOST!
+echo [*] Installing dependencies from requirements.txt (PyQt5, OpenCV, Torch, Ultralytics)...
+"!RUN_PYTHON!" -m pip install -r "%SCRIPT_DIR%\requirements.txt" -i !PIP_INDEX! !TRUSTED_HOST!
 if errorlevel 1 (
-    echo [Retry] Retrying GUI dependencies with Aliyun mirror...
-    "!RUN_PYTHON!" -m pip install "pyqt5>=5.15.0" "lxml>=4.9.0" "Pillow>=9.5.0" "pyyaml>=6.0.0" "yamlloader>=0.5.5" -i http://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
+    echo [Retry] Retrying with Aliyun mirror...
+    "!RUN_PYTHON!" -m pip install -r "%SCRIPT_DIR%\requirements.txt" -i http://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
     if errorlevel 1 (
-        echo [ERROR] Failed to install core GUI and XML dependencies.
+        echo [ERROR] Failed to install dependencies from requirements.txt.
         if "%IS_AUTO_MODE%"=="0" pause
         exit /b 1
     )
-)
-
-echo [*] Installing Computer Vision engine (OpenCV-Headless and NumPy)...
-"!RUN_PYTHON!" -m pip install "opencv-python-headless>=4.7.0" "numpy>=1.23.0" -i !PIP_INDEX! !TRUSTED_HOST!
-if errorlevel 1 (
-    echo [Retry] Retrying with Tsinghua mirror...
-    "!RUN_PYTHON!" -m pip install "opencv-python-headless>=4.7.0" "numpy>=1.23.0" -i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn
 )
 
 REM Purge wheel download cache to save disk space
