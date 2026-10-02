@@ -422,6 +422,9 @@ if errorlevel 1 (
     "!RUN_PYTHON!" -m pip install "opencv-python-headless>=4.7.0" "numpy>=1.23.0" -i https://pypi.tuna.tsinghua.edu.cn/simple --trusted-host pypi.tuna.tsinghua.edu.cn
 )
 
+REM Purge wheel download cache to save disk space
+"!RUN_PYTHON!" -m pip cache purge >nul 2>&1
+
 :verify_step
 REM ------------------------------------------------------------------------------
 REM Step 5/5: Verifying runtime dependencies and self-test
