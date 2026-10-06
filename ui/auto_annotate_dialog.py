@@ -5,7 +5,7 @@ from core.qt_compat import *
 from core.safe_widgets import SafeComboBox, SafeSlider, SafeDoubleSpinBox
 from core.yolo_annotator import YOLOAnnotator
 from core.xml_handler import XMLHandler
-from utils.worker_thread import BatchAnnotationThread
+from utils.worker_thread import BatchAnnotationThread, ModelLoaderThread
 from ui.styles import LIGHT_WORKSTATION_STYLE
 
 def safe_print(msg):
@@ -55,7 +55,13 @@ class AutoAnnotateDialog(QDialog):
             Qt.WindowCloseButtonHint
         )
 
-        self.annotator = YOLOAnnotator()
+        # 如果主窗口在后台已经预热好了相同模型的 annotator，直接零延迟秒级复用
+        if self.main_window and getattr(self.main_window, 'cached_annotator', None):
+            self.annotator = self.main_window.cached_annotator
+            self._current_loaded_path = getattr(self.main_window.cached_annotator, 'model_path', None)
+        else:
+            self.annotator = YOLOAnnotator()
+        self.loader_thread: Optional[ModelLoaderThread] = None
         self.batch_thread: Optional[BatchAnnotationThread] = None
 
         self.cur_img_dir = ""
@@ -111,11 +117,11 @@ class AutoAnnotateDialog(QDialog):
         btn_browse_m.clicked.connect(self.browse_custom_model)
         m_box.addWidget(btn_browse_m)
 
-        btn_test_m = QPushButton(" 测试加载")
-        btn_test_m.setObjectName("btn_secondary")
-        btn_test_m.setStyleSheet("font-size: 13px; padding: 5px 12px;")
-        btn_test_m.clicked.connect(self.test_current_model)
-        m_box.addWidget(btn_test_m)
+        self.btn_test_m = QPushButton(" 测试加载")
+        self.btn_test_m.setObjectName("btn_secondary")
+        self.btn_test_m.setStyleSheet("font-size: 13px; padding: 5px 12px;")
+        self.btn_test_m.clicked.connect(self.test_current_model)
+        m_box.addWidget(self.btn_test_m)
 
         m_layout.addLayout(m_box)
         layout.addLayout(m_layout)
@@ -560,49 +566,121 @@ class AutoAnnotateDialog(QDialog):
                 return
             self.load_model(path_val)
 
-    def load_model(self, model_path: str, silent: bool = False):
+    def attach_prewarmed_annotator(self, annotator, class_dict, model_path):
+        """挂载后台静默预热完成的模型对象 (0 毫秒秒级呈现)"""
+        if not annotator or not model_path:
+            return
+        self.annotator = annotator
+        self._current_loaded_path = model_path
+        self.populate_class_table(class_dict)
+        msg = f"已加载模型: {os.path.basename(model_path)} (包含类别数: {len(class_dict)})"
+        self.set_status(msg)
+        if hasattr(self, 'btn_test_m'):
+            self.btn_test_m.setEnabled(True)
+            self.btn_test_m.setText(" 测试加载")
+        if self.main_window:
+            self.main_window.cached_annotator = annotator
+            self.main_window.cached_class_dict = class_dict
+            self.main_window.cached_model_path = model_path
+        for i in range(self.combo_models.count()):
+            if self.combo_models.itemData(i) == model_path:
+                self.combo_models.blockSignals(True)
+                self.combo_models.setCurrentIndex(i)
+                self.combo_models.blockSignals(False)
+                break
+
+    def load_model(self, model_path: str, silent: bool = False, async_load: bool = True):
         if not os.path.exists(model_path):
             if not silent:
                 QMessageBox.warning(self, "警告", f"模型文件不存在: {model_path}")
             self.refresh_model_selector()
             return
 
-        try:
-            class_dict = self.annotator.load_model(model_path)
+        if getattr(self, '_current_loaded_path', None) == model_path and self.annotator.model is not None:
+            return
 
-            self.populate_class_table(class_dict)
-            msg = f"已加载模型: {os.path.basename(model_path)} (包含类别数: {len(class_dict)})"
+        # 内存极速复用 (若底层 annotator 已加载相同模型)
+        if self.annotator.model is not None and self.annotator.model_path == model_path:
+            self._current_loaded_path = model_path
+            self.populate_class_table(self.annotator.class_names)
+            msg = f"已加载模型: {os.path.basename(model_path)} (包含类别数: {len(self.annotator.class_names)})"
             self.set_status(msg)
+            return
 
-            if self.main_window and hasattr(self.main_window, 'settings'):
+        if async_load:
+            # 采用后台工作线程异步加载，主界面绝不假死转圈！
+            self.set_status(f"⚡ 正在后台载入 AI 模型: {os.path.basename(model_path)} ...")
+            if hasattr(self, 'btn_test_m'):
+                self.btn_test_m.setEnabled(False)
+                self.btn_test_m.setText("载入中...")
+
+            if self.loader_thread and self.loader_thread.isRunning():
+                try:
+                    self.loader_thread.quit()
+                    self.loader_thread.wait(500)
+                except Exception:
+                    pass
+
+            self.loader_thread = ModelLoaderThread(self.annotator, model_path, parent=self)
+            self.loader_thread.loaded_signal.connect(lambda classes, p: self._on_async_model_loaded(classes, p, silent))
+            self.loader_thread.error_signal.connect(lambda err: self._on_async_model_error(err, silent))
+            self.loader_thread.start()
+            return
+
+        self._do_sync_load(model_path, silent)
+
+    def _on_async_model_loaded(self, class_dict: Dict[int, str], model_path: str, silent: bool):
+        self._current_loaded_path = model_path
+        self.populate_class_table(class_dict)
+        msg = f"已加载模型: {os.path.basename(model_path)} (包含类别数: {len(class_dict)})"
+        self.set_status(msg)
+
+        if hasattr(self, 'btn_test_m'):
+            self.btn_test_m.setEnabled(True)
+            self.btn_test_m.setText(" 测试加载")
+
+        if self.main_window:
+            if hasattr(self.main_window, 'settings'):
                 self.main_window.settings['last_model_path'] = model_path
                 self.main_window.settings.save()
-            
-            for i in range(self.combo_models.count()):
-                if self.combo_models.itemData(i) == model_path:
-                    self.combo_models.blockSignals(True)
-                    self.combo_models.setCurrentIndex(i)
-                    self.combo_models.blockSignals(False)
-                    break
-        except Exception as e:
-            err_str = str(e)
-            safe_print(f"[YOLO Model Center Error] 模型载入异常: {err_str}")
-            if "ultralytics" in err_str.lower() or "torch" in err_str.lower():
-                hint = (
-                    "当前环境尚未安装 AI 模型推理依赖 (Ultralytics / PyTorch)。\n\n"
-                    "如需启用 YOLOv8/YOLO26 自动标注功能，请在命令行中执行：\n"
-                    "pip install -r requirements.txt\n\n"
-                    "或运行安装目录下的 setup_env.bat 自动配置完整运行环境。"
-                )
-                if not silent:
-                    QMessageBox.warning(self, "AI 组件未安装", hint)
-                else:
-                    self.set_status(hint)
+            self.main_window.cached_annotator = self.annotator
+            self.main_window.cached_class_dict = class_dict
+
+        for i in range(self.combo_models.count()):
+            if self.combo_models.itemData(i) == model_path:
+                self.combo_models.blockSignals(True)
+                self.combo_models.setCurrentIndex(i)
+                self.combo_models.blockSignals(False)
+                break
+
+    def _on_async_model_error(self, err_str: str, silent: bool):
+        if hasattr(self, 'btn_test_m'):
+            self.btn_test_m.setEnabled(True)
+            self.btn_test_m.setText(" 测试加载")
+        safe_print(f"[YOLO Model Center Error] 模型载入异常: {err_str}")
+        if "ultralytics" in err_str.lower() or "torch" in err_str.lower():
+            hint = (
+                "当前环境尚未安装 AI 模型推理依赖 (Ultralytics / PyTorch)。\n\n"
+                "如需启用 YOLOv8/YOLO26 自动标注功能，请在命令行中执行：\n"
+                "pip install -r requirements.txt\n\n"
+                "或运行安装目录下的 setup_env.bat 自动配置完整运行环境。"
+            )
+            if not silent:
+                QMessageBox.warning(self, "AI 组件未安装", hint)
             else:
-                if not silent:
-                    QMessageBox.critical(self, "模型载入失败", err_str)
-                else:
-                    self.set_status(f"模型载入异常: {err_str}")
+                self.set_status(hint)
+        else:
+            if not silent:
+                QMessageBox.critical(self, "模型载入失败", err_str)
+            else:
+                self.set_status(f"模型载入异常: {err_str}")
+
+    def _do_sync_load(self, model_path: str, silent: bool):
+        try:
+            class_dict = self.annotator.load_model(model_path)
+            self._on_async_model_loaded(class_dict, model_path, silent)
+        except Exception as e:
+            self._on_async_model_error(str(e), silent)
 
 
 
@@ -726,7 +804,31 @@ class AutoAnnotateDialog(QDialog):
                     self.combo_save_format.setCurrentIndex(fmt_idx)
                     self.combo_save_format.blockSignals(False)
 
+            # 1. 若当前实例已持有预热或已加载的模型，直接极速就绪，跳过重复磁盘加载 (0 毫秒)
+            if getattr(self, '_current_loaded_path', None) and self.annotator.model is not None:
+                self.populate_class_table(self.annotator.class_names)
+                for i in range(self.combo_models.count()):
+                    if self.combo_models.itemData(i) == self._current_loaded_path:
+                        self.combo_models.blockSignals(True)
+                        self.combo_models.setCurrentIndex(i)
+                        self.combo_models.blockSignals(False)
+                        break
+                return
+
             last_pt = settings.value("model_center/last_model_path", "", type=str)
+            if not last_pt and hasattr(self.main_window, '_last_model_path') and self.main_window._last_model_path:
+                last_pt = self.main_window._last_model_path
+
+            # 2. 如果主窗口正在运行后台预热线程，不重复触发磁盘加载，无缝等待预热完成
+            if self.main_window and getattr(self.main_window, 'prewarm_thread', None) and self.main_window.prewarm_thread.isRunning():
+                self.set_status("⚡ 正在后台载入 AI 模型，稍候即可就绪...")
+                if hasattr(self, 'btn_test_m'):
+                    self.btn_test_m.setEnabled(False)
+                    self.btn_test_m.setText("载入中...")
+                self.main_window.prewarm_thread.prewarmed_signal.connect(self.attach_prewarmed_annotator)
+                return
+
+            # 3. 正常按需异步加载
             if last_pt and os.path.exists(last_pt):
                 self.load_model(last_pt, silent=True)
             else:

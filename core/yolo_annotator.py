@@ -1,6 +1,8 @@
 import os
 from typing import List, Dict, Any, Optional
 
+_GLOBAL_MODEL_CACHE: Dict[str, Any] = {}
+
 class YOLOAnnotator:
     """
     YOLO 模型推理与自动标注核心封装类
@@ -9,15 +11,28 @@ class YOLOAnnotator:
         self.model = None
         self.model_path = None
         self.class_names: Dict[int, str] = {}
-        self.device = 'cuda' if self.is_cuda_available() else 'cpu'
+        self._device: Optional[str] = None
+        self.device_override: Optional[str] = None
+
+    @property
+    def device(self) -> str:
+        if self.device_override:
+            return self.device_override
+        if self._device is None:
+            self._device = 'cuda' if self.is_cuda_available() else 'cpu'
+        return self._device
+
+    @device.setter
+    def device(self, val: str):
+        self.device_override = val
 
     @staticmethod
     def is_cuda_available() -> bool:
-        """检查 PyTorch 是否有 CUDA 支持"""
+        """检查 PyTorch 是否有 CUDA 支持 (惰性检测，按需触发)"""
         try:
             import torch
             return torch.cuda.is_available()
-        except ImportError:
+        except Exception:
             return False
 
     def load_model(self, model_path: str, device: Optional[str] = None) -> Dict[int, str]:
@@ -28,16 +43,28 @@ class YOLOAnnotator:
         :param device: 指定运行设备 'cuda', 'cpu', 或 None (自动)
         :return: 模型的类别字典 {class_id: class_name}
         """
-        from ultralytics import YOLO
-
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"未找到模型文件: {model_path}")
+
+        abs_p = os.path.abspath(model_path)
 
         if device:
             self.device = device
 
-        self.model = YOLO(model_path)
-        self.model_path = model_path
+        # 1. 实例级内存极速缓存命中: 如果已加载相同模型，直接复用内存对象，耗时 0 毫秒
+        if self.model is not None and self.model_path == abs_p and (device is None or self.device == device):
+            return self.class_names
+
+        # 2. 全局进程级内存模型缓存短路: 跨组件共享已加载权重，跳过磁盘 I/O 与反序列化，耗时 0 毫秒
+        if abs_p in _GLOBAL_MODEL_CACHE and (device is None or self.device == device):
+            self.model, self.class_names = _GLOBAL_MODEL_CACHE[abs_p]
+            self.model_path = abs_p
+            return self.class_names
+
+        from ultralytics import YOLO
+
+        self.model = YOLO(abs_p)
+        self.model_path = abs_p
         
         # 提取类别名称 (兼容 dict 与 list/tuple 格式)
         if hasattr(self.model, 'names') and self.model.names:
@@ -51,6 +78,7 @@ class YOLOAnnotator:
         else:
             self.class_names = {}
 
+        _GLOBAL_MODEL_CACHE[abs_p] = (self.model, dict(self.class_names))
         return self.class_names
 
     def predict_image(

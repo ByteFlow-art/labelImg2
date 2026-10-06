@@ -193,3 +193,52 @@ class BatchAnnotationThread(QThread):
                 self.progress_signal.emit(idx + 1, total_images, filename, f"推理出错: {str(e)}")
 
         self.finished_signal.emit(processed_count, total_boxes_found)
+
+
+class ModelLoaderThread(QThread):
+    """
+    后台异步模型加载工作线程 (彻底解放 UI 主线程，防止点击模型中心卡顿转圈)
+    """
+    loaded_signal = pyqtSignal(dict, str) # (classes_dict, model_path)
+    error_signal = pyqtSignal(str)        # (error_message)
+
+    def __init__(self, annotator: YOLOAnnotator, model_path: str, device: Optional[str] = None, parent=None):
+        super().__init__(parent)
+        self.annotator = annotator
+        self.model_path = model_path
+        self.device = device
+
+    def run(self):
+        try:
+            class_dict = self.annotator.load_model(self.model_path, device=self.device)
+            self.loaded_signal.emit(class_dict, self.model_path)
+        except Exception as e:
+            self.error_signal.emit(str(e))
+
+
+class BackgroundPrewarmThread(QThread):
+    """
+    系统空闲静默预热线程 (在主窗口渲染完成后于后台静默导入 PyTorch 与预载模型权重)
+    用户使用前静默完成准备，实现点击【模型中心】0 秒秒开！
+    """
+    prewarmed_signal = pyqtSignal(object, dict, str) # (annotator, class_dict, model_path)
+
+    def __init__(self, model_path: Optional[str] = None, parent=None):
+        super().__init__(parent)
+        self.model_path = model_path
+
+    def run(self):
+        try:
+            # 1. 后台静默预热 PyTorch 与 Ultralytics
+            import torch
+            from ultralytics import YOLO
+
+            # 2. 如果存在待预热的模型文件，在后台线程中预解析权重
+            if self.model_path and os.path.exists(self.model_path):
+                annotator = YOLOAnnotator()
+                class_dict = annotator.load_model(self.model_path)
+                self.prewarmed_signal.emit(annotator, class_dict, self.model_path)
+            else:
+                self.prewarmed_signal.emit(None, {}, "")
+        except Exception:
+            self.prewarmed_signal.emit(None, {}, "")

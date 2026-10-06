@@ -437,6 +437,9 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM Cache configured Python interpreter for high-speed direct launch
+echo !RUN_PYTHON!> "%SCRIPT_DIR%\.python_path" 2>nul
+
 REM ------------------------------------------------------------------------------
 REM Create Desktop and Start Menu Shortcuts
 REM ------------------------------------------------------------------------------

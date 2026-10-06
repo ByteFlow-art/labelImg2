@@ -28,6 +28,19 @@ if not exist "%SCRIPT_DIR%\%APP_FILE%" (
     exit /b 1
 )
 
+REM ------------------------------------------------------------------------------
+REM 0. High-Speed Cache: Instant launch using cached Python interpreter (.python_path)
+REM ------------------------------------------------------------------------------
+set "CACHE_FILE=%SCRIPT_DIR%\.python_path"
+if exist "%CACHE_FILE%" (
+    set "CACHED_PYTHON="
+    set /p CACHED_PYTHON=<"%CACHE_FILE%"
+    if defined CACHED_PYTHON if exist "!CACHED_PYTHON!" (
+        start "" "!CACHED_PYTHON!" "%SCRIPT_DIR%\%APP_FILE%"
+        exit /b 0
+    )
+)
+
 set "TARGET_PYTHON="
 
 REM ------------------------------------------------------------------------------
@@ -64,6 +77,7 @@ for %%P in (
 )
 
 if defined TARGET_PYTHON (
+    echo !TARGET_PYTHON!> "%CACHE_FILE%" 2>nul
     start "" "!TARGET_PYTHON!" "%SCRIPT_DIR%\%APP_FILE%"
     exit /b 0
 )
@@ -74,6 +88,7 @@ REM ----------------------------------------------------------------------------
 if exist "%SCRIPT_DIR%\python_runtime\pythonw.exe" (
     "%SCRIPT_DIR%\python_runtime\pythonw.exe" -c "import PyQt5, lxml, PIL" >nul 2>&1
     if !errorlevel! EQU 0 (
+        echo %SCRIPT_DIR%\python_runtime\pythonw.exe> "%CACHE_FILE%" 2>nul
         start "" "%SCRIPT_DIR%\python_runtime\pythonw.exe" "%SCRIPT_DIR%\%APP_FILE%"
         exit /b 0
     )
@@ -81,6 +96,7 @@ if exist "%SCRIPT_DIR%\python_runtime\pythonw.exe" (
 if exist "%SCRIPT_DIR%\python_runtime\python.exe" (
     "%SCRIPT_DIR%\python_runtime\python.exe" -c "import PyQt5, lxml, PIL" >nul 2>&1
     if !errorlevel! EQU 0 (
+        echo %SCRIPT_DIR%\python_runtime\python.exe> "%CACHE_FILE%" 2>nul
         start "" "%SCRIPT_DIR%\python_runtime\python.exe" "%SCRIPT_DIR%\%APP_FILE%"
         exit /b 0
     )
@@ -92,6 +108,7 @@ REM ----------------------------------------------------------------------------
 if exist "%SCRIPT_DIR%\.venv\Scripts\pythonw.exe" (
     "%SCRIPT_DIR%\.venv\Scripts\pythonw.exe" -c "import PyQt5, lxml, PIL" >nul 2>&1
     if !errorlevel! EQU 0 (
+        echo %SCRIPT_DIR%\.venv\Scripts\pythonw.exe> "%CACHE_FILE%" 2>nul
         start "" "%SCRIPT_DIR%\.venv\Scripts\pythonw.exe" "%SCRIPT_DIR%\%APP_FILE%"
         exit /b 0
     )
@@ -99,6 +116,7 @@ if exist "%SCRIPT_DIR%\.venv\Scripts\pythonw.exe" (
 if exist "%SCRIPT_DIR%\.venv\Scripts\python.exe" (
     "%SCRIPT_DIR%\.venv\Scripts\python.exe" -c "import PyQt5, lxml, PIL" >nul 2>&1
     if !errorlevel! EQU 0 (
+        echo %SCRIPT_DIR%\.venv\Scripts\python.exe> "%CACHE_FILE%" 2>nul
         start "" "%SCRIPT_DIR%\.venv\Scripts\python.exe" "%SCRIPT_DIR%\%APP_FILE%"
         exit /b 0
     )
@@ -140,6 +158,7 @@ for %%P in (
 )
 
 if defined TARGET_PYTHON (
+    echo !TARGET_PYTHON!> "%CACHE_FILE%" 2>nul
     start "" "!TARGET_PYTHON!" "%SCRIPT_DIR%\%APP_FILE%"
     exit /b 0
 )
@@ -167,6 +186,7 @@ if not defined TARGET_PYTHON (
 )
 
 if defined TARGET_PYTHON (
+    echo !TARGET_PYTHON!> "%CACHE_FILE%" 2>nul
     start "" "!TARGET_PYTHON!" "%SCRIPT_DIR%\%APP_FILE%"
     exit /b 0
 )
@@ -180,6 +200,7 @@ for /f "delims=" %%I in ('where pythonw.exe 2^>nul') do (
     if errorlevel 1 (
         "%%~fI" -c "import PyQt5, lxml, PIL" >nul 2>&1
         if !errorlevel! EQU 0 (
+            echo %%~fI> "%CACHE_FILE%" 2>nul
             start "" "%%~fI" "%SCRIPT_DIR%\%APP_FILE%"
             exit /b 0
         )
@@ -191,6 +212,7 @@ for /f "delims=" %%I in ('where python.exe 2^>nul') do (
     if errorlevel 1 (
         "%%~fI" -c "import PyQt5, lxml, PIL" >nul 2>&1
         if !errorlevel! EQU 0 (
+            echo %%~fI> "%CACHE_FILE%" 2>nul
             start "" "%%~fI" "%SCRIPT_DIR%\%APP_FILE%"
             exit /b 0
         )

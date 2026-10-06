@@ -80,8 +80,6 @@ from libs.fileView import CFileView
 from libs.cvtlabels2yolo import cvt_lbidata_rotdet
 from libs.toggle_switch import SwitchButton
 
-from ui.train_dialog import TrainDialog
-from ui.auto_annotate_dialog import AutoAnnotateDialog
 from utils.folder_sort_sync import sort_images_by_folder_order, natural_sort_key
 
 __appname__ = 'labelImg2'
@@ -671,14 +669,27 @@ class MainWindow(QMainWindow, WindowMixin):
         elif last_file and os.path.exists(last_file) and os.path.isfile(last_file):
             self.queueEvent(partial(self.loadFile, last_file))
 
-        if last_model and os.path.exists(last_model):
-            def restore_last_model():
-                if not hasattr(self, 'auto_annotate_dialog') or self.auto_annotate_dialog is None:
-                    self.auto_annotate_dialog = AutoAnnotateDialog(main_window_ref=self, parent=self)
-                self.auto_annotate_dialog.refresh_model_selector()
-                self.auto_annotate_dialog.load_model(last_model)
-                log_terminal(f"[Startup State] 已恢复上次加载模型: {os.path.basename(last_model)}")
-            self.queueEvent(restore_last_model)
+        # 记录上次加载的 AI 模型路径 (惰性加载与静默预热架构: 启动阶段绝不阻塞卡死 UI 主线程)
+        self._last_model_path = last_model if (last_model and os.path.exists(last_model)) else None
+        if not self._last_model_path:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            for c in [os.path.join(base_dir, "yolo26n.pt"), os.path.join(base_dir, "yolov8n.pt")]:
+                if os.path.exists(c):
+                    self._last_model_path = c
+                    break
+
+        if self._last_model_path:
+            log_terminal(f"[Startup State] AI 模型已预选: {os.path.basename(self._last_model_path)}")
+
+        self.cached_annotator = None
+        self.cached_class_dict = {}
+        self.cached_model_path = ""
+        self.prewarm_thread = None
+        self.auto_annotate_dialog = None
+
+        # 核心极速架构: 启动主界面渲染 800ms 且完全空闲后，在后台静默预热 PyTorch 与 AI 权重
+        # 彻底解决点击模型中心需等待转圈的问题，实现点击瞬间 0 毫秒秒开！
+        QTimer.singleShot(800, self._start_idle_prewarm)
 
         # Callbacks:
         self.zoomWidget.valueChanged.connect(self.paintCanvas)
@@ -851,21 +862,63 @@ class MainWindow(QMainWindow, WindowMixin):
         image_dir = self.dirpath if hasattr(self, 'dirpath') and self.dirpath else (getattr(self, 'lastOpenDir', "") or "")
         xml_dir = getattr(self, 'defaultSaveDir', None) or image_dir
         if not hasattr(self, 'train_dialog') or self.train_dialog is None:
+            from ui.train_dialog import TrainDialog
             self.train_dialog = TrainDialog(default_image_dir=image_dir, default_xml_dir=xml_dir, parent=self)
             self.train_dialog.model_trained_signal.connect(self.onYOLOModelTrained)
         self.train_dialog.show()
         self.train_dialog.raise_()
         self.train_dialog.activateWindow()
 
+    def _start_idle_prewarm(self):
+        """主窗口完全加载呈现后，在后台静默预热 PyTorch/Ultralytics 与默认/上次模型"""
+        target_model = getattr(self, '_last_model_path', None)
+        if not target_model or not os.path.exists(target_model):
+            return
+
+        try:
+            from utils.worker_thread import BackgroundPrewarmThread
+            self.prewarm_thread = BackgroundPrewarmThread(model_path=target_model, parent=self)
+            self.prewarm_thread.prewarmed_signal.connect(self._on_idle_prewarm_finished)
+            self.prewarm_thread.start()
+        except Exception as e:
+            pass
+
+    def _on_idle_prewarm_finished(self, annotator, class_dict, model_path):
+        if annotator and model_path:
+            self.cached_annotator = annotator
+            self.cached_class_dict = class_dict
+            self.cached_model_path = model_path
+            log_terminal(f"[AI Background Prewarm] 模型后台静默就绪: {os.path.basename(model_path)} (类别数: {len(class_dict)})")
+
+            # 在空闲时段静默轻量预构建模型中心对话框，用户点击时达成 0 毫秒秒开！
+            if getattr(self, 'auto_annotate_dialog', None) is None:
+                try:
+                    from ui.auto_annotate_dialog import AutoAnnotateDialog
+                    self.auto_annotate_dialog = AutoAnnotateDialog(main_window_ref=self, parent=self)
+                except Exception as e:
+                    pass
+            elif hasattr(self.auto_annotate_dialog, 'attach_prewarmed_annotator'):
+                self.auto_annotate_dialog.attach_prewarmed_annotator(annotator, class_dict, model_path)
+
     def onYOLOModelTrained(self, best_pt_path):
         if not hasattr(self, 'auto_annotate_dialog') or self.auto_annotate_dialog is None:
+            from ui.auto_annotate_dialog import AutoAnnotateDialog
             self.auto_annotate_dialog = AutoAnnotateDialog(main_window_ref=self, parent=self)
         self.auto_annotate_dialog.load_model(best_pt_path)
         self.auto_annotate_dialog.show()
 
     def openYOLOAutoAnnotateDialog(self):
         if not hasattr(self, 'auto_annotate_dialog') or self.auto_annotate_dialog is None:
+            from ui.auto_annotate_dialog import AutoAnnotateDialog
             self.auto_annotate_dialog = AutoAnnotateDialog(main_window_ref=self, parent=self)
+
+        # 若后台预热正在进行中但还未结束，无缝直连
+        if hasattr(self, 'prewarm_thread') and self.prewarm_thread and self.prewarm_thread.isRunning():
+            self.auto_annotate_dialog.set_status("⚡ 正在后台载入 AI 模型，稍候即可就绪...")
+            self.prewarm_thread.prewarmed_signal.connect(
+                self.auto_annotate_dialog.attach_prewarmed_annotator
+            )
+
         self.auto_annotate_dialog.sync_paths_from_main_window()
         self.auto_annotate_dialog.show()
         self.auto_annotate_dialog.raise_()
@@ -874,7 +927,17 @@ class MainWindow(QMainWindow, WindowMixin):
     def auto_annotate_current_image_quick(self):
         """按下快捷键 S 或点击【自动标注当前图 (S)】触发 (无弹窗，终端打印)"""
         if not hasattr(self, 'auto_annotate_dialog') or self.auto_annotate_dialog is None:
+            from ui.auto_annotate_dialog import AutoAnnotateDialog
             self.auto_annotate_dialog = AutoAnnotateDialog(main_window_ref=self, parent=self)
+
+        # 若模型中心尚未加载完成，但主窗口已预热完毕，直接挂载
+        if (self.auto_annotate_dialog.annotator.model is None and 
+            getattr(self, 'cached_annotator', None) and 
+            hasattr(self.auto_annotate_dialog, 'attach_prewarmed_annotator')):
+            self.auto_annotate_dialog.attach_prewarmed_annotator(
+                self.cached_annotator, self.cached_class_dict, self.cached_model_path
+            )
+
         # 模型标注前保存完整撤销快照，使 Ctrl+Z 可一步撤销整个模型标注操作
         self.save_undo_state()
         log_terminal("[Shortcut S / Quick Auto-Annotate] 触发当前页面自动标注...")
@@ -883,7 +946,16 @@ class MainWindow(QMainWindow, WindowMixin):
     def auto_annotate_batch_quick(self):
         """点击【一键批量自动标注】触发 (无弹窗，终端打印)"""
         if not hasattr(self, 'auto_annotate_dialog') or self.auto_annotate_dialog is None:
+            from ui.auto_annotate_dialog import AutoAnnotateDialog
             self.auto_annotate_dialog = AutoAnnotateDialog(main_window_ref=self, parent=self)
+
+        if (self.auto_annotate_dialog.annotator.model is None and 
+            getattr(self, 'cached_annotator', None) and 
+            hasattr(self.auto_annotate_dialog, 'attach_prewarmed_annotator')):
+            self.auto_annotate_dialog.attach_prewarmed_annotator(
+                self.cached_annotator, self.cached_class_dict, self.cached_model_path
+            )
+
         log_terminal("[Quick Batch Auto-Annotate] 启动批量全自动标注...")
         self.auto_annotate_dialog.start_batch_annotate()
 
@@ -2088,6 +2160,8 @@ class MainWindow(QMainWindow, WindowMixin):
 
         if hasattr(self, 'auto_annotate_dialog') and self.auto_annotate_dialog and self.auto_annotate_dialog.annotator.model_path:
             settings['last_model_path'] = self.auto_annotate_dialog.annotator.model_path
+        elif getattr(self, '_last_model_path', None):
+            settings['last_model_path'] = self._last_model_path
 
         settings[SETTING_AUTO_SAVE] = self.autoSaving.isChecked()
         settings[SETTING_DRAW_CORNER] = self.drawCorner.isChecked()
