@@ -14,7 +14,7 @@ class TrainDialog(QDialog):
 
     def __init__(self, default_image_dir: str = "", default_xml_dir: str = "", parent=None):
         super().__init__(parent)
-        self.setWindowTitle("YOLO 模型训练")
+        self.setWindowTitle("YOLO 模型训练 (Model Training)")
         ico = self.get_icon("app.ico")
 
         if ico.isNull():
@@ -61,12 +61,12 @@ class TrainDialog(QDialog):
     def create_section_header(self, title_text: str) -> QLabel:
         lbl = QLabel(title_text)
         lbl.setObjectName("section_header")
-        lbl.setStyleSheet("font-size: 14px; font-weight: bold; color: #1E293B; margin-top: 6px; margin-bottom: 2px;")
         return lbl
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(12, 12, 12, 12)
+        main_layout.setContentsMargins(16, 16, 16, 16)
+        main_layout.setSpacing(12)
 
         # 滚动区域以保证极端窗口尺寸下的排版灵活性
         scroll_area = QScrollArea()
@@ -188,7 +188,8 @@ class TrainDialog(QDialog):
         self.lbl_map50 = QLabel("mAP50: 0.0000")
 
         for lbl in [self.lbl_pct, self.lbl_epoch, self.lbl_box_loss, self.lbl_cls_loss, self.lbl_map50]:
-            lbl.setStyleSheet("background-color: #FFFFFF; border: 1px solid #000000; border-radius: 4px; padding: 6px 12px; font-weight: bold; color: #000000; min-height: 20px;")
+            lbl.setObjectName("metric_card")
+            lbl.setAlignment(Qt.AlignCenter)
             m_box.addWidget(lbl)
 
         dash_layout.addLayout(m_box)
@@ -203,30 +204,37 @@ class TrainDialog(QDialog):
         # 4. 训练日志文本域
         layout.addWidget(self.create_section_header("4. 训练日志输出终端"))
         self.txt_log = QTextEdit()
-        self.txt_log.setMinimumHeight(120)
+        self.txt_log.setMinimumHeight(140)
         self.txt_log.setReadOnly(True)
         layout.addWidget(self.txt_log)
 
-        # 5. 操作控制按钮区域
-        btn_box = QHBoxLayout()
-        btn_box.setSpacing(14)
+        scroll_area.setWidget(container)
+        main_layout.addWidget(scroll_area)
 
-        self.btn_start = QPushButton(" 开始模型训练")
-        self.btn_start.setIcon(self.get_icon("play.svg"))
-        self.btn_start.clicked.connect(self.start_train)
-        btn_box.addWidget(self.btn_start)
+        # 5. 底部固定状态指示与全局控制栏 (与 AutoAnnotateDialog、LabelDialog 统一视觉架构)
+        bottom_bar = QHBoxLayout()
+        bottom_bar.setContentsMargins(0, 4, 0, 0)
+        bottom_bar.setSpacing(12)
+
+        self.lbl_train_status = QLabel("● 就绪")
+        self.lbl_train_status.setObjectName("status_indicator")
+        bottom_bar.addWidget(self.lbl_train_status)
+        bottom_bar.addStretch()
 
         self.btn_apply = QPushButton(" 应用训练模型至自动标注")
         self.btn_apply.setIcon(self.get_icon("export.svg"))
         self.btn_apply.setObjectName("btn_secondary")
         self.btn_apply.setEnabled(False)
         self.btn_apply.clicked.connect(self.apply_trained_model)
-        btn_box.addWidget(self.btn_apply)
+        bottom_bar.addWidget(self.btn_apply)
 
-        layout.addLayout(btn_box)
+        self.btn_start = QPushButton(" 开始模型训练")
+        self.btn_start.setIcon(self.get_icon("play.svg"))
+        self.btn_start.setObjectName("btn_primary")
+        self.btn_start.clicked.connect(self.start_train)
+        bottom_bar.addWidget(self.btn_start)
 
-        scroll_area.setWidget(container)
-        main_layout.addWidget(scroll_area)
+        main_layout.addLayout(bottom_bar)
 
     def refresh_base_models(self):
         self.combo_base_model.blockSignals(True)
@@ -318,6 +326,8 @@ class TrainDialog(QDialog):
         self.btn_apply.setEnabled(False)
         self.txt_log.clear()
         self.progress_bar.setValue(0)
+        if hasattr(self, 'lbl_train_status'):
+            self.lbl_train_status.setText("⚡ 正在训练模型中...")
 
         self.trainer_thread = ModelTrainerThread(
             image_dir=img_dir,
@@ -363,6 +373,8 @@ class TrainDialog(QDialog):
         self.btn_start.setEnabled(True)
         self.btn_apply.setEnabled(True)
         self.last_trained_pt = best_pt_path
+        if hasattr(self, 'lbl_train_status'):
+            self.lbl_train_status.setText(f"✅ 训练完成: {os.path.basename(best_pt_path)}")
 
         if self.isMinimized() or not self.isVisible():
             self.showNormal()
@@ -373,6 +385,8 @@ class TrainDialog(QDialog):
 
     def on_error(self, err_msg: str):
         self.btn_start.setEnabled(True)
+        if hasattr(self, 'lbl_train_status'):
+            self.lbl_train_status.setText("❌ 训练异常失败")
         if self.isMinimized() or not self.isVisible():
             self.showNormal()
             self.raise_()

@@ -26,7 +26,7 @@ class AutoAnnotateDialog(QDialog):
     def __init__(self, main_window_ref, parent=None):
         super().__init__(parent)
         self.main_window = main_window_ref
-        self.setWindowTitle("YOLO 模型中心")
+        self.setWindowTitle("YOLO 模型中心 (Model Center)")
         ico = self.get_icon("app.ico")
         if ico.isNull():
             ico = self.get_icon("app.png")
@@ -79,12 +79,12 @@ class AutoAnnotateDialog(QDialog):
     def create_section_header(self, title_text: str) -> QLabel:
         lbl = QLabel(title_text)
         lbl.setObjectName("section_header")
-        lbl.setStyleSheet("font-size: 14px; font-weight: bold; color: #1E293B; margin-top: 6px; margin-bottom: 2px;")
         return lbl
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(14, 14, 14, 14)
+        main_layout.setContentsMargins(16, 16, 16, 16)
+        main_layout.setSpacing(12)
 
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
@@ -145,7 +145,7 @@ class AutoAnnotateDialog(QDialog):
         self.spin_conf.setValue(0.25)
         self.spin_conf.setDecimals(2)
         self.spin_conf.setFixedWidth(70)
-        self.spin_conf.setStyleSheet("font-size: 13px; font-weight: bold; color: #2563EB;")
+        self.spin_conf.setStyleSheet("font-size: 13px; font-weight: 700; color: #0F172A;")
 
         self.slider_conf = SafeSlider(Qt.Horizontal)
         self.slider_conf.setRange(1, 100)
@@ -170,7 +170,7 @@ class AutoAnnotateDialog(QDialog):
         self.spin_iou.setValue(0.45)
         self.spin_iou.setDecimals(2)
         self.spin_iou.setFixedWidth(70)
-        self.spin_iou.setStyleSheet("font-size: 13px; font-weight: bold; color: #2563EB;")
+        self.spin_iou.setStyleSheet("font-size: 13px; font-weight: 700; color: #0F172A;")
 
         self.slider_iou = SafeSlider(Qt.Horizontal)
         self.slider_iou.setRange(1, 100)
@@ -310,6 +310,31 @@ class AutoAnnotateDialog(QDialog):
 
         scroll_area.setWidget(container)
         main_layout.addWidget(scroll_area)
+
+        # 底部状态指示与全局控制栏 (与 TrainDialog、LabelDialog 统一视觉与操作框架)
+        bottom_bar = QHBoxLayout()
+        bottom_bar.setContentsMargins(0, 4, 0, 0)
+        self.lbl_status = QLabel("就绪")
+        self.lbl_status.setObjectName("status_indicator")
+        bottom_bar.addWidget(self.lbl_status)
+        bottom_bar.addStretch()
+
+        self.btn_speed_test = QPushButton(" 批次测速")
+        self.btn_speed_test.setObjectName("btn_secondary")
+        self.btn_speed_test.clicked.connect(self.run_speed_benchmark)
+        bottom_bar.addWidget(self.btn_speed_test)
+
+        self.btn_single_test = QPushButton(" 单图推理测试")
+        self.btn_single_test.setObjectName("btn_secondary")
+        self.btn_single_test.clicked.connect(self.run_single_image_test)
+        bottom_bar.addWidget(self.btn_single_test)
+
+        btn_close = QPushButton("保存配置并关闭")
+        btn_close.setObjectName("btn_primary")
+        btn_close.clicked.connect(self.accept)
+        bottom_bar.addWidget(btn_close)
+
+        main_layout.addLayout(bottom_bar)
 
     def sync_paths_from_main_window(self):
         """同步 LabelImg 主窗口中当前打开的图片路径、保存路径与保存格式（相互独立互不干扰）"""

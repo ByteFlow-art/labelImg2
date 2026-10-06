@@ -8,7 +8,7 @@ import codecs
 from PyQt5.QtGui import QIcon, QFont, QColor, QBrush, QCursor, QDesktopServices
 from PyQt5.QtCore import Qt, QUrl, pyqtSignal
 from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
+    QApplication, QWidget, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QComboBox, QListWidget, QListWidgetItem,
     QMessageBox, QInputDialog, QGroupBox, QDialogButtonBox,
     QAbstractItemView, QFrame, QSizePolicy
@@ -16,137 +16,37 @@ from PyQt5.QtWidgets import (
 
 from .lib import newIcon, labelValidator
 
-BB = QDialogButtonBox
+from ui.styles import LIGHT_WORKSTATION_STYLE
 
-DIALOG_STYLE = """
-QDialog {
-    background-color: #F8FAFC;
-    font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
-}
-QGroupBox {
-    font-size: 13px;
-    font-weight: bold;
-    color: #1E293B;
-    border: 1px solid #CBD5E1;
-    border-radius: 8px;
-    margin-top: 12px;
-    padding-top: 16px;
-    background-color: #FFFFFF;
-}
-QGroupBox::title {
-    subcontrol-origin: margin;
-    left: 12px;
-    padding: 0 6px;
-    background-color: #FFFFFF;
-}
-QLabel {
-    color: #334155;
-    font-size: 12px;
-}
-QLineEdit {
-    background-color: #FFFFFF;
-    border: 1px solid #CBD5E1;
-    border-radius: 5px;
-    padding: 6px 10px;
-    font-size: 13px;
-    color: #0F172A;
-}
-QLineEdit:focus {
-    border: 1px solid #3B82F6;
-    background-color: #F8FAFC;
-}
-QComboBox {
-    background-color: #FFFFFF;
-    border: 1px solid #CBD5E1;
-    border-radius: 5px;
-    padding: 5px 10px;
-    font-size: 13px;
-    color: #0F172A;
-    min-height: 26px;
-}
-QComboBox:hover {
-    border: 1px solid #94A3B8;
-}
-QComboBox::drop-down {
-    subcontrol-origin: padding;
-    subcontrol-position: top right;
-    width: 24px;
-    border-left: 1px solid #E2E8F0;
-}
-QListWidget {
-    background-color: #FFFFFF;
-    border: 1px solid #CBD5E1;
-    border-radius: 6px;
-    font-size: 13px;
-    outline: none;
-}
-QListWidget::item {
-    padding: 6px 10px;
-    border-bottom: 1px solid #F1F5F9;
-    color: #1E293B;
-}
-QListWidget::item:hover {
-    background-color: #F1F5F9;
-}
-QListWidget::item:selected {
-    background-color: #E0E7FF;
-    color: #1E40AF;
-    font-weight: 600;
-}
-QPushButton {
-    background-color: #FFFFFF;
-    color: #334155;
-    border: 1px solid #CBD5E1;
-    border-radius: 5px;
-    padding: 6px 14px;
-    font-size: 12px;
-    font-weight: 500;
-    min-height: 20px;
-}
-QPushButton:hover {
-    background-color: #F1F5F9;
-    border-color: #94A3B8;
-    color: #0F172A;
-}
-QPushButton:pressed {
-    background-color: #E2E8F0;
-}
-QPushButton#btn_primary {
-    background-color: #2563EB;
-    color: #FFFFFF;
-    border: 1px solid #1D4ED8;
-    font-weight: 600;
-}
-QPushButton#btn_primary:hover {
-    background-color: #1D4ED8;
-}
-QPushButton#btn_danger {
-    background-color: #FEE2E2;
-    color: #B91C1C;
-    border: 1px solid #FECACA;
-}
-QPushButton#btn_danger:hover {
-    background-color: #FCA5A5;
-    color: #7F1D1D;
-}
-QPushButton#btn_success {
-    background-color: #ECFDF5;
-    color: #047857;
-    border: 1px solid #A7F3D0;
-}
-QPushButton#btn_success:hover {
-    background-color: #D1FAE5;
-    color: #065F46;
-}
-"""
+BB = QDialogButtonBox
 
 class LabelDialog(QDialog):
     def __init__(self, text="Enter object label", parent=None, listItem=None, currentFile=None, dataDir=None):
         super(LabelDialog, self).__init__(parent)
-        self.setWindowTitle("标签组与类别管理 (Manage Labels & Groups)")
-        self.resize(600, 620)
-        self.setMinimumSize(540, 560)
-        self.setStyleSheet(DIALOG_STYLE)
+        self.setWindowTitle("标签与类别管理 (Manage Labels)")
+        ico = newIcon("app.ico")
+        if ico.isNull():
+            ico = newIcon("app.png")
+        if ico.isNull():
+            ico = newIcon("labelImg2.ico")
+        self.setWindowIcon(ico)
+
+        screen = QApplication.primaryScreen()
+        if screen:
+            avail = screen.availableGeometry()
+            w = min(680, int(avail.width() * 0.85))
+            h = min(720, int(avail.height() * 0.90))
+            self.resize(w, h)
+        else:
+            self.resize(680, 720)
+
+        self.setMinimumSize(600, 620)
+        self.setStyleSheet(LIGHT_WORKSTATION_STYLE)
+        self.setWindowFlags(
+            Qt.Window |
+            Qt.WindowMinMaxButtonsHint |
+            Qt.WindowCloseButtonHint
+        )
 
         self.data_dir = self._detect_data_dir(dataDir)
         self.current_file_path = currentFile
@@ -182,29 +82,41 @@ class LabelDialog(QDialog):
 
         return os.path.abspath("data")
 
+    def create_section_header(self, title_text: str) -> QLabel:
+        lbl = QLabel(title_text)
+        lbl.setObjectName("section_header")
+        return lbl
+
     def _init_ui(self):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(16, 16, 16, 16)
-        main_layout.setSpacing(12)
+        main_layout.setSpacing(14)
 
         # ---------------- 1. 顶部标签组选择面板 ----------------
-        group_box = QGroupBox("1. 标签组选择 (data 目录中的 .txt 文件)")
+        main_layout.addWidget(self.create_section_header("1. 标签组文件管理 (Data Files)"))
+
+        group_box = QWidget()
         group_layout = QVBoxLayout(group_box)
-        group_layout.setContentsMargins(14, 16, 14, 14)
+        group_layout.setContentsMargins(0, 0, 0, 4)
         group_layout.setSpacing(10)
 
         row1 = QHBoxLayout()
         lbl_group = QLabel("当前标签组:")
-        lbl_group.setStyleSheet("font-weight: bold;")
+        lbl_group.setMinimumWidth(80)
+        lbl_group.setStyleSheet("font-weight: 600; font-size: 13px;")
         self.groupCombo = QComboBox()
         self.groupCombo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.groupCombo.currentIndexChanged.connect(self.on_group_changed)
 
-        btn_refresh = QPushButton("刷新")
+        btn_refresh = QPushButton(" 刷新")
+        btn_refresh.setIcon(newIcon("refresh.svg"))
+        btn_refresh.setObjectName("btn_secondary")
         btn_refresh.setToolTip("重新扫描 data 目录下的所有 .txt 标签组")
         btn_refresh.clicked.connect(self.scan_data_dir)
 
-        btn_open_folder = QPushButton("打开目录")
+        btn_open_folder = QPushButton(" 打开目录")
+        btn_open_folder.setIcon(newIcon("open.svg"))
+        btn_open_folder.setObjectName("btn_secondary")
         btn_open_folder.setToolTip("在系统文件管理器中打开 data 目录")
         btn_open_folder.clicked.connect(self.open_data_folder)
 
@@ -215,18 +127,19 @@ class LabelDialog(QDialog):
         group_layout.addLayout(row1)
 
         row2 = QHBoxLayout()
-        btn_new_group = QPushButton("新建标签组...")
+        btn_new_group = QPushButton(" 新建标签组...")
         btn_new_group.setIcon(newIcon('icon_open_file.svg'))
+        btn_new_group.setObjectName("btn_secondary")
         btn_new_group.clicked.connect(self.new_group)
 
-        self.btn_save_file = QPushButton("保存修改到当前 .txt 文件")
+        self.btn_save_file = QPushButton(" 保存修改至文件")
         self.btn_save_file.setIcon(newIcon('save.svg'))
         self.btn_save_file.setObjectName("btn_success")
         self.btn_save_file.setToolTip("将当前列表中的修改（增删改排序）保存回当前的 .txt 标签文件")
         self.btn_save_file.clicked.connect(self.save_to_current_file)
 
         self.lbl_file_path = QLabel("")
-        self.lbl_file_path.setStyleSheet("color: #64748B; font-size: 11px;")
+        self.lbl_file_path.setStyleSheet("color: #64748B; font-size: 12px;")
 
         row2.addWidget(btn_new_group)
         row2.addWidget(self.btn_save_file)
@@ -237,26 +150,29 @@ class LabelDialog(QDialog):
         main_layout.addWidget(group_box)
 
         # ---------------- 2. 中间标签类别管理面板 ----------------
-        list_box = QGroupBox("2. 标签类别列表 (支持增删改排)")
+        main_layout.addWidget(self.create_section_header("2. 类别标签编辑与排序 (Labels & Order)"))
+
+        list_box = QWidget()
         list_layout = QVBoxLayout(list_box)
-        list_layout.setContentsMargins(14, 16, 14, 14)
+        list_layout.setContentsMargins(0, 0, 0, 0)
         list_layout.setSpacing(10)
 
         # 编辑输入行
         edit_layout = QHBoxLayout()
         self.edit = QLineEdit()
-        self.edit.setPlaceholderText("输入标签名称...")
+        self.edit.setPlaceholderText("输入标签名称 (回车快速添加)...")
         self.edit.setValidator(labelValidator())
         self.edit.returnPressed.connect(self.add_label)
 
-        btn_add = QPushButton("添加")
+        btn_add = QPushButton(" 添加")
         btn_add.setObjectName("btn_primary")
         btn_add.clicked.connect(self.add_label)
 
-        btn_modify = QPushButton("修改")
+        btn_modify = QPushButton(" 修改")
+        btn_modify.setObjectName("btn_secondary")
         btn_modify.clicked.connect(self.modify_label)
 
-        btn_delete = QPushButton("删除")
+        btn_delete = QPushButton(" 删除")
         btn_delete.setObjectName("btn_danger")
         btn_delete.clicked.connect(self.delete_label)
 
@@ -274,11 +190,15 @@ class LabelDialog(QDialog):
         self.listWidget.itemDoubleClicked.connect(self.on_item_double_clicked)
 
         order_layout = QVBoxLayout()
-        btn_up = QPushButton("上移")
+        order_layout.setSpacing(8)
+        btn_up = QPushButton(" 上移")
+        btn_up.setObjectName("btn_secondary")
         btn_up.clicked.connect(self.move_up)
-        btn_down = QPushButton("下移")
+        btn_down = QPushButton(" 下移")
+        btn_down.setObjectName("btn_secondary")
         btn_down.clicked.connect(self.move_down)
-        btn_clear = QPushButton("清空")
+        btn_clear = QPushButton(" 清空")
+        btn_clear.setObjectName("btn_danger")
         btn_clear.clicked.connect(self.clear_labels)
 
         order_layout.addWidget(btn_up)
@@ -294,13 +214,17 @@ class LabelDialog(QDialog):
 
         # ---------------- 3. 底部状态与操作按钮 ----------------
         bottom_layout = QHBoxLayout()
+        bottom_layout.setContentsMargins(0, 4, 0, 0)
         self.lbl_status = QLabel("就绪")
-        self.lbl_status.setStyleSheet("color: #475569; font-weight: 500;")
+        self.lbl_status.setObjectName("status_indicator")
 
         self.buttonBox = BB(BB.Ok | BB.Cancel, Qt.Horizontal, self)
-        self.buttonBox.button(BB.Ok).setText("确认应用")
-        self.buttonBox.button(BB.Ok).setObjectName("btn_primary")
-        self.buttonBox.button(BB.Cancel).setText("取消")
+        btn_ok = self.buttonBox.button(BB.Ok)
+        btn_ok.setText("确认应用")
+        btn_ok.setObjectName("btn_primary")
+        btn_cancel = self.buttonBox.button(BB.Cancel)
+        btn_cancel.setText("取消")
+        btn_cancel.setObjectName("btn_secondary")
         self.buttonBox.accepted.connect(self.validate)
         self.buttonBox.rejected.connect(self.reject)
 
@@ -417,9 +341,8 @@ class LabelDialog(QDialog):
         clean_text = str(label_text).strip()
         item = QListWidgetItem()
         item.setData(Qt.UserRole, clean_text)
-        item.setText(f"{index_num}. {clean_text}")
-        item.setForeground(QBrush(QColor("#1E293B")))
-        item.setBackground(QBrush(QColor("#FFFFFF")))
+        item.setText(f"{index_num:02d}.  {clean_text}")
+        item.setForeground(QBrush(QColor("#0F172A")))
         self.listWidget.addItem(item)
         return item
 
@@ -631,7 +554,8 @@ class LabelDialog(QDialog):
 
     def update_status(self):
         count = self.listWidget.count()
-        self.lbl_status.setText(f"共 {count} 个标签类别")
+        group_name = self.groupCombo.currentText() or "自定义"
+        self.lbl_status.setText(f"● 类别总数: {count} 个 | 当前标签组: {group_name}")
 
     def updateListItems(self, listItem):
         """兼容原有调用方法"""
