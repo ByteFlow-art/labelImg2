@@ -37,13 +37,13 @@ class AutoAnnotateDialog(QDialog):
         screen = QApplication.primaryScreen()
         if screen:
             avail = screen.availableGeometry()
-            w = min(920, int(avail.width() * 0.85))
-            h = min(860, int(avail.height() * 0.92))
+            w = min(960, int(avail.width() * 0.85))
+            h = min(880, int(avail.height() * 0.92))
             self.resize(w, h)
         else:
-            self.resize(920, 860)
+            self.resize(960, 880)
 
-        self.setMinimumSize(800, 680)
+        self.setMinimumSize(850, 720)
         self.setStyleSheet(LIGHT_WORKSTATION_STYLE)
 
         # 窗口样式与非模态配置
@@ -101,11 +101,10 @@ class AutoAnnotateDialog(QDialog):
         m_box = QHBoxLayout()
         lbl_m = QLabel("模型权重:")
         lbl_m.setMinimumWidth(100)
-        lbl_m.setStyleSheet("font-size: 13px; font-weight: bold;")
+        lbl_m.setStyleSheet("font-weight: 600;")
         m_box.addWidget(lbl_m)
 
         self.combo_models = SafeComboBox()
-        self.combo_models.setStyleSheet("font-size: 13px; padding: 4px;")
         self.refresh_model_selector()
         self.combo_models.currentIndexChanged.connect(self.on_model_selected)
         m_box.addWidget(self.combo_models, stretch=1)
@@ -113,13 +112,11 @@ class AutoAnnotateDialog(QDialog):
         btn_browse_m = QPushButton(" 选择权重文件")
         btn_browse_m.setIcon(self.get_icon("open.svg"))
         btn_browse_m.setObjectName("btn_secondary")
-        btn_browse_m.setStyleSheet("font-size: 13px; padding: 5px 12px;")
         btn_browse_m.clicked.connect(self.browse_custom_model)
         m_box.addWidget(btn_browse_m)
 
         self.btn_test_m = QPushButton(" 测试加载")
         self.btn_test_m.setObjectName("btn_secondary")
-        self.btn_test_m.setStyleSheet("font-size: 13px; padding: 5px 12px;")
         self.btn_test_m.clicked.connect(self.test_current_model)
         m_box.addWidget(self.btn_test_m)
 
@@ -136,7 +133,7 @@ class AutoAnnotateDialog(QDialog):
         conf_box = QHBoxLayout()
         lbl_c = QLabel("Conf (置信度阈值):")
         lbl_c.setMinimumWidth(130)
-        lbl_c.setStyleSheet("font-size: 13px; font-weight: bold;")
+        lbl_c.setStyleSheet("font-weight: 600;")
         conf_box.addWidget(lbl_c)
 
         self.spin_conf = SafeDoubleSpinBox()
@@ -144,8 +141,8 @@ class AutoAnnotateDialog(QDialog):
         self.spin_conf.setSingleStep(0.01)
         self.spin_conf.setValue(0.25)
         self.spin_conf.setDecimals(2)
-        self.spin_conf.setFixedWidth(70)
-        self.spin_conf.setStyleSheet("font-size: 13px; font-weight: 700; color: #0F172A;")
+        self.spin_conf.setFixedWidth(80)
+        self.spin_conf.setStyleSheet("font-weight: 700; color: #0F172A;")
 
         self.slider_conf = SafeSlider(Qt.Horizontal)
         self.slider_conf.setRange(1, 100)
@@ -161,7 +158,7 @@ class AutoAnnotateDialog(QDialog):
         iou_box = QHBoxLayout()
         lbl_i = QLabel("IoU (NMS重叠阈值):")
         lbl_i.setMinimumWidth(130)
-        lbl_i.setStyleSheet("font-size: 13px; font-weight: bold;")
+        lbl_i.setStyleSheet("font-weight: 600;")
         iou_box.addWidget(lbl_i)
 
         self.spin_iou = SafeDoubleSpinBox()
@@ -169,8 +166,8 @@ class AutoAnnotateDialog(QDialog):
         self.spin_iou.setSingleStep(0.01)
         self.spin_iou.setValue(0.45)
         self.spin_iou.setDecimals(2)
-        self.spin_iou.setFixedWidth(70)
-        self.spin_iou.setStyleSheet("font-size: 13px; font-weight: 700; color: #0F172A;")
+        self.spin_iou.setFixedWidth(80)
+        self.spin_iou.setStyleSheet("font-weight: 700; color: #0F172A;")
 
         self.slider_iou = SafeSlider(Qt.Horizontal)
         self.slider_iou.setRange(1, 100)
@@ -188,21 +185,19 @@ class AutoAnnotateDialog(QDialog):
         param_grid.setVerticalSpacing(10)
 
         lbl_sz = QLabel("推理分辨率 (imgsz):")
-        lbl_sz.setStyleSheet("font-size: 13px; font-weight: bold;")
+        lbl_sz.setStyleSheet("font-weight: 600;")
         param_grid.addWidget(lbl_sz, 0, 0)
 
         self.combo_imgsz = SafeComboBox()
         self.combo_imgsz.addItems(["640 x 640 (推荐)", "320 x 320 (快速)", "1280 x 1280 (高清)"])
-        self.combo_imgsz.setStyleSheet("font-size: 13px; padding: 3px;")
         param_grid.addWidget(self.combo_imgsz, 0, 1)
 
         lbl_dev = QLabel("推理设备 (Device):")
-        lbl_dev.setStyleSheet("font-size: 13px; font-weight: bold;")
+        lbl_dev.setStyleSheet("font-weight: 600;")
         param_grid.addWidget(lbl_dev, 0, 2)
 
         self.combo_device = SafeComboBox()
         self.combo_device.addItems(["Auto (CUDA / GPU)", "CPU Mode"])
-        self.combo_device.setStyleSheet("font-size: 13px; padding: 3px;")
         param_grid.addWidget(self.combo_device, 0, 3)
 
         t_layout.addLayout(param_grid)
@@ -216,22 +211,22 @@ class AutoAnnotateDialog(QDialog):
         quick_act_box = QHBoxLayout()
         btn_sel_all = QPushButton("全选")
         btn_sel_all.setObjectName("btn_secondary")
-        btn_sel_all.setFixedHeight(28)
-        btn_sel_all.setStyleSheet("font-size: 12px;")
+        btn_sel_all.setFixedHeight(32)
+        btn_sel_all.setStyleSheet("font-size: 13px;")
         btn_sel_all.clicked.connect(self.select_all_classes)
         quick_act_box.addWidget(btn_sel_all)
 
         btn_desel_all = QPushButton("清空")
         btn_desel_all.setObjectName("btn_secondary")
-        btn_desel_all.setFixedHeight(28)
-        btn_desel_all.setStyleSheet("font-size: 12px;")
+        btn_desel_all.setFixedHeight(32)
+        btn_desel_all.setStyleSheet("font-size: 13px;")
         btn_desel_all.clicked.connect(self.deselect_all_classes)
         quick_act_box.addWidget(btn_desel_all)
 
         btn_invert_sel = QPushButton("反选")
         btn_invert_sel.setObjectName("btn_secondary")
-        btn_invert_sel.setFixedHeight(28)
-        btn_invert_sel.setStyleSheet("font-size: 12px;")
+        btn_invert_sel.setFixedHeight(32)
+        btn_invert_sel.setStyleSheet("font-size: 13px;")
         btn_invert_sel.clicked.connect(self.invert_class_selection)
         quick_act_box.addWidget(btn_invert_sel)
 
@@ -239,13 +234,12 @@ class AutoAnnotateDialog(QDialog):
         cls_layout.addLayout(quick_act_box)
 
         self.table_cls = QTableWidget(0, 3)
-        self.table_cls.setMinimumHeight(180)
-        self.table_cls.setMaximumHeight(240)
-        self.table_cls.verticalHeader().setDefaultSectionSize(30)
+        self.table_cls.setMinimumHeight(200)
+        self.table_cls.setMaximumHeight(260)
+        self.table_cls.verticalHeader().setDefaultSectionSize(34)
         self.table_cls.verticalHeader().setVisible(False)
         self.table_cls.setHorizontalHeaderLabels(["启用检测", "模型原始类别", "导出标签映射 (双击修改)"])
         self.table_cls.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.table_cls.setStyleSheet("font-size: 13px;")
         cls_layout.addWidget(self.table_cls)
 
         layout.addLayout(cls_layout)
@@ -255,13 +249,13 @@ class AutoAnnotateDialog(QDialog):
         mode_box = QHBoxLayout()
         lbl_mode = QLabel("标注应用模式:")
         lbl_mode.setMinimumWidth(130)
-        lbl_mode.setStyleSheet("font-size: 13px; font-weight: bold;")
+        lbl_mode.setStyleSheet("font-weight: 600;")
         mode_box.addWidget(lbl_mode)
 
         rb_style = """
         QRadioButton {
-            font-size: 13px;
-            font-weight: bold;
+            font-size: 14px;
+            font-weight: 600;
             color: #1E293B;
         }
         QRadioButton:checked {
@@ -288,7 +282,7 @@ class AutoAnnotateDialog(QDialog):
         fmt_box = QHBoxLayout()
         lbl_fmt = QLabel("保存格式类型:")
         lbl_fmt.setMinimumWidth(130)
-        lbl_fmt.setStyleSheet("font-size: 13px; font-weight: bold;")
+        lbl_fmt.setStyleSheet("font-weight: 600;")
         fmt_box.addWidget(lbl_fmt)
 
         self.combo_save_format = SafeComboBox()
@@ -298,7 +292,6 @@ class AutoAnnotateDialog(QDialog):
             "Create ML JSON (*.json)",
             "COCO JSON (*.json)"
         ])
-        self.combo_save_format.setStyleSheet("font-size: 13px; padding: 4px;")
         self.combo_save_format.currentIndexChanged.connect(self.on_save_format_changed)
         fmt_box.addWidget(self.combo_save_format, stretch=1)
         layout.addLayout(fmt_box)

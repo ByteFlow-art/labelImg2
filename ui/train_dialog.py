@@ -26,13 +26,13 @@ class TrainDialog(QDialog):
         screen = QApplication.primaryScreen()
         if screen:
             avail = screen.availableGeometry()
-            w = min(880, int(avail.width() * 0.85))
-            h = min(840, int(avail.height() * 0.92))
+            w = min(920, int(avail.width() * 0.85))
+            h = min(860, int(avail.height() * 0.92))
             self.resize(w, h)
         else:
-            self.resize(880, 840)
+            self.resize(920, 860)
 
-        self.setMinimumSize(800, 680)
+        self.setMinimumSize(820, 720)
         self.setStyleSheet(LIGHT_WORKSTATION_STYLE)
 
         # 启用非模态窗口与完整的【最小化、最大化、关闭】功能
@@ -204,7 +204,7 @@ class TrainDialog(QDialog):
         # 4. 训练日志文本域
         layout.addWidget(self.create_section_header("4. 训练日志输出终端"))
         self.txt_log = QTextEdit()
-        self.txt_log.setMinimumHeight(140)
+        self.txt_log.setMinimumHeight(150)
         self.txt_log.setReadOnly(True)
         layout.addWidget(self.txt_log)
 

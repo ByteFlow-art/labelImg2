@@ -251,6 +251,7 @@ class MainWindow(QMainWindow, WindowMixin):
 
         # Main widgets and related state.
         self.labelDialog = LabelDialog(parent=self, listItem=self.labelHist, currentFile=getattr(self, 'current_label_file', None))
+        self.labelDialog.labels_applied.connect(self.on_labels_applied)
 
         self.ShapeItemDict = {}
         self.ItemShapeDict = {}
@@ -1202,6 +1203,24 @@ class MainWindow(QMainWindow, WindowMixin):
         if hasattr(self, 'menus') and hasattr(self.menus, 'saveFormat'):
             self.menus.saveFormat.exec_(QCursor.pos())
 
+    def on_labels_applied(self, labels, default_label, chosen_file=""):
+        """响应 Manage Labels 窗口非模态应用/保存事件，平滑同步主窗口状态"""
+        if labels is not None:
+            self.labelHist = list(labels)
+            if default_label:
+                self.default_label = default_label
+            elif self.labelHist:
+                self.default_label = self.labelHist[0]
+
+            if chosen_file and os.path.isfile(chosen_file):
+                self.current_label_file = chosen_file
+                self.settings['current_label_file'] = chosen_file
+                self.settings.save()
+
+            self.labelList.updateLabelList(self.labelHist)
+            group_name = os.path.basename(getattr(self, 'current_label_file', '')) if getattr(self, 'current_label_file', None) else "自定义"
+            self.statusBar().showMessage(f"已应用标签组 [{group_name}] (共 {len(self.labelHist)} 个类别，当前默认: {self.default_label})", 4000)
+
     def editLabel(self):
         if hasattr(self, 'canvas') and self.canvas.drawing():
             self.canvas.setEditing()
@@ -1210,21 +1229,7 @@ class MainWindow(QMainWindow, WindowMixin):
             default_label=getattr(self, 'default_label', None),
             current_file=getattr(self, 'current_label_file', None)
         )
-        res = self.labelDialog.popUp()
-
-        if res is not None:
-            if len(res) == 3:
-                self.labelHist, self.default_label, chosen_file = res
-                if chosen_file and os.path.isfile(chosen_file):
-                    self.current_label_file = chosen_file
-                    self.settings['current_label_file'] = chosen_file
-                    self.settings.save()
-            else:
-                self.labelHist, self.default_label = res
-
-            self.labelList.updateLabelList(self.labelHist)
-            group_name = os.path.basename(getattr(self, 'current_label_file', '')) if getattr(self, 'current_label_file', None) else "自定义"
-            self.statusBar().showMessage(f"已应用标签组 [{group_name}] (共 {len(self.labelHist)} 个类别，当前默认: {self.default_label})", 4000)
+        self.labelDialog.popUp()
 
 
     def fileCurrentChanged(self, current, previous):

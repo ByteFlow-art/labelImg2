@@ -6,7 +6,7 @@ import sys
 import re
 import codecs
 from PyQt5.QtGui import QIcon, QFont, QColor, QBrush, QCursor, QDesktopServices
-from PyQt5.QtCore import Qt, QUrl, pyqtSignal
+from PyQt5.QtCore import Qt, QUrl, pyqtSignal, QTimer
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QComboBox, QListWidget, QListWidgetItem,
@@ -20,7 +20,29 @@ from ui.styles import LIGHT_WORKSTATION_STYLE
 
 BB = QDialogButtonBox
 
+
+class DragDropListWidget(QListWidget):
+    """支持内部拖拽排序并派发完成事件的列表控件"""
+    itemDropped = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super(DragDropListWidget, self).__init__(parent)
+        self.setDragEnabled(True)
+        self.setAcceptDrops(True)
+        self.setDropIndicatorShown(True)
+        self.setDragDropMode(QAbstractItemView.InternalMove)
+        self.setDefaultDropAction(Qt.MoveAction)
+        self.setSelectionMode(QAbstractItemView.SingleSelection)
+
+    def dropEvent(self, event):
+        super(DragDropListWidget, self).dropEvent(event)
+        self.itemDropped.emit()
+
+
 class LabelDialog(QDialog):
+    # 非模态应用与联动信号 (labels, default_label, current_file_path)
+    labels_applied = pyqtSignal(list, str, str)
+
     def __init__(self, text="Enter object label", parent=None, listItem=None, currentFile=None, dataDir=None):
         super(LabelDialog, self).__init__(parent)
         self.setWindowTitle("标签与类别管理 (Manage Labels)")
@@ -34,14 +56,19 @@ class LabelDialog(QDialog):
         screen = QApplication.primaryScreen()
         if screen:
             avail = screen.availableGeometry()
-            w = min(680, int(avail.width() * 0.85))
-            h = min(720, int(avail.height() * 0.90))
+            w = min(720, int(avail.width() * 0.85))
+            h = min(760, int(avail.height() * 0.90))
             self.resize(w, h)
         else:
-            self.resize(680, 720)
+            self.resize(720, 760)
 
-        self.setMinimumSize(600, 620)
+        self.setMinimumSize(640, 660)
         self.setStyleSheet(LIGHT_WORKSTATION_STYLE)
+
+        # 启用非模态窗口模式，彻底避免阻塞主窗口及模型中心交互
+        non_modal_val = getattr(Qt, 'NonModal', None) or getattr(getattr(Qt, 'WindowModality', None), 'NonModal', 0)
+        self.setWindowModality(non_modal_val)
+        self.setModal(False)
         self.setWindowFlags(
             Qt.Window |
             Qt.WindowMinMaxButtonsHint |
@@ -103,7 +130,7 @@ class LabelDialog(QDialog):
         row1 = QHBoxLayout()
         lbl_group = QLabel("当前标签组:")
         lbl_group.setMinimumWidth(80)
-        lbl_group.setStyleSheet("font-weight: 600; font-size: 13px;")
+        lbl_group.setStyleSheet("font-weight: 600; font-size: 14px;")
         self.groupCombo = QComboBox()
         self.groupCombo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.groupCombo.currentIndexChanged.connect(self.on_group_changed)
@@ -139,7 +166,7 @@ class LabelDialog(QDialog):
         self.btn_save_file.clicked.connect(self.save_to_current_file)
 
         self.lbl_file_path = QLabel("")
-        self.lbl_file_path.setStyleSheet("color: #64748B; font-size: 12px;")
+        self.lbl_file_path.setStyleSheet("color: #64748B; font-size: 13px;")
 
         row2.addWidget(btn_new_group)
         row2.addWidget(self.btn_save_file)
@@ -176,39 +203,29 @@ class LabelDialog(QDialog):
         btn_delete.setObjectName("btn_danger")
         btn_delete.clicked.connect(self.delete_label)
 
-        edit_layout.addWidget(self.edit, 1)
-        edit_layout.addWidget(btn_add)
-        edit_layout.addWidget(btn_modify)
-        edit_layout.addWidget(btn_delete)
-        list_layout.addLayout(edit_layout)
-
-        # 列表与排序辅助操作
-        content_layout = QHBoxLayout()
-        self.listWidget = QListWidget()
-        self.listWidget.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.listWidget.itemClicked.connect(self.on_item_clicked)
-        self.listWidget.itemDoubleClicked.connect(self.on_item_double_clicked)
-
-        order_layout = QVBoxLayout()
-        order_layout.setSpacing(8)
-        btn_up = QPushButton(" 上移")
-        btn_up.setObjectName("btn_secondary")
-        btn_up.clicked.connect(self.move_up)
-        btn_down = QPushButton(" 下移")
-        btn_down.setObjectName("btn_secondary")
-        btn_down.clicked.connect(self.move_down)
         btn_clear = QPushButton(" 清空")
         btn_clear.setObjectName("btn_danger")
         btn_clear.clicked.connect(self.clear_labels)
 
-        order_layout.addWidget(btn_up)
-        order_layout.addWidget(btn_down)
-        order_layout.addStretch()
-        order_layout.addWidget(btn_clear)
+        edit_layout.addWidget(self.edit, 1)
+        edit_layout.addWidget(btn_add)
+        edit_layout.addWidget(btn_modify)
+        edit_layout.addWidget(btn_delete)
+        edit_layout.addWidget(btn_clear)
+        list_layout.addLayout(edit_layout)
 
-        content_layout.addWidget(self.listWidget, 1)
-        content_layout.addLayout(order_layout)
-        list_layout.addLayout(content_layout)
+        # 列表与原生拖拽排序
+        self.listWidget = DragDropListWidget(self)
+        self.listWidget.itemClicked.connect(self.on_item_clicked)
+        self.listWidget.itemDoubleClicked.connect(self.on_item_double_clicked)
+        self.listWidget.itemDropped.connect(self.reindex_items)
+        self.listWidget.model().rowsMoved.connect(lambda *args: QTimer.singleShot(0, self.reindex_items))
+        self.listWidget.setToolTip("按住鼠标左键可直接上下拖拽类别项调整前后排序")
+        list_layout.addWidget(self.listWidget, 1)
+
+        lbl_drag_tip = QLabel("💡 提示：按住鼠标左键可直接上下拖拽类别项调整前后排序")
+        lbl_drag_tip.setStyleSheet("color: #64748B; font-size: 13px; margin-top: 2px;")
+        list_layout.addWidget(lbl_drag_tip)
 
         main_layout.addWidget(list_box, 1)
 
@@ -453,23 +470,16 @@ class LabelDialog(QDialog):
         self.default_label = lab
         self.refresh_list_display()
 
-    def move_up(self):
-        row = self.listWidget.currentRow()
-        if row <= 0:
-            return
-        labels = self.get_labels()
-        labels[row - 1], labels[row] = labels[row], labels[row]
-        self.set_labels(labels, self.default_label)
-        self.listWidget.setCurrentRow(row - 1)
-
-    def move_down(self):
-        row = self.listWidget.currentRow()
-        if row < 0 or row >= self.listWidget.count() - 1:
-            return
-        labels = self.get_labels()
-        labels[row + 1], labels[row] = labels[row], labels[row + 1]
-        self.set_labels(labels, self.default_label)
-        self.listWidget.setCurrentRow(row + 1)
+    def reindex_items(self):
+        """拖拽排序后，根据最新排列顺序重新整理序号显示"""
+        for idx in range(self.listWidget.count()):
+            item = self.listWidget.item(idx)
+            raw = item.data(Qt.UserRole)
+            if not raw:
+                raw = re.sub(r'^\d+\.\s*', '', item.text()).strip()
+                item.setData(Qt.UserRole, raw)
+            item.setText(f"{idx + 1:02d}.  {raw}")
+        self.update_status()
 
     def clear_labels(self):
         if self.listWidget.count() == 0:
@@ -505,6 +515,9 @@ class LabelDialog(QDialog):
                 self._block_group_change = True
                 self.groupCombo.setItemText(curr_idx, f"{fname}  ({len(labels)} 类)")
                 self._block_group_change = False
+
+            # 同步通知外界联动更新
+            self.labels_applied.emit(labels, self.default_label or "", self.current_file_path or "")
 
             QMessageBox.information(
                 self,
@@ -583,21 +596,25 @@ class LabelDialog(QDialog):
             if reply != QMessageBox.Yes:
                 return
 
+        self.labels_applied.emit(labels, self.default_label or "", self.current_file_path or "")
         self.accept()
 
     def postProcess(self):
         pass
 
     def popUp(self, move=False):
-        if self.parent():
-            geo = self.parent().geometry()
-            x = geo.x() + (geo.width() - self.width()) // 2
-            y = geo.y() + (geo.height() - self.height()) // 2
-            self.move(max(0, x), max(0, y))
-        elif move:
-            self.move(QCursor.pos())
+        """非模态展示窗口，不阻塞主窗口及模型中心交互"""
+        if not self.isVisible():
+            if self.parent():
+                geo = self.parent().geometry()
+                x = geo.x() + (geo.width() - self.width()) // 2
+                y = geo.y() + (geo.height() - self.height()) // 2
+                self.move(max(0, x), max(0, y))
+            elif move:
+                self.move(QCursor.pos())
 
+        self.show()
+        self.raise_()
+        self.activateWindow()
         self.edit.setFocus()
-        if self.exec_():
-            return self.get_labels(), self.default_label, self.current_file_path
-        return None
+        return self.get_labels(), self.default_label, self.current_file_path

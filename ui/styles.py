@@ -13,13 +13,13 @@ QDialog, QMainWindow {
     background-color: #FFFFFF;
     color: #0F172A;
     font-family: 'Segoe UI', -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
-    font-size: 13px;
+    font-size: 14px;
 }
 
 QWidget {
     color: #0F172A;
     font-family: 'Segoe UI', -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
-    font-size: 13px;
+    font-size: 14px;
 }
 
 QToolTip {
@@ -27,8 +27,8 @@ QToolTip {
     color: #FFFFFF;
     border: none;
     border-radius: 4px;
-    padding: 6px 10px;
-    font-size: 12px;
+    padding: 6px 12px;
+    font-size: 13px;
 }
 
 /* ==================== 2. 滚动区与细致滚动条 ==================== */
@@ -40,15 +40,15 @@ QScrollArea {
 QScrollBar:vertical {
     border: none;
     background: #F8FAFC;
-    width: 7px;
+    width: 8px;
     margin: 0px;
-    border-radius: 3px;
+    border-radius: 4px;
 }
 
 QScrollBar::handle:vertical {
     background: #CBD5E1;
-    min-height: 24px;
-    border-radius: 3px;
+    min-height: 28px;
+    border-radius: 4px;
 }
 
 QScrollBar::handle:vertical:hover {
@@ -63,15 +63,15 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
 QScrollBar:horizontal {
     border: none;
     background: #F8FAFC;
-    height: 7px;
+    height: 8px;
     margin: 0px;
-    border-radius: 3px;
+    border-radius: 4px;
 }
 
 QScrollBar::handle:horizontal {
     background: #CBD5E1;
-    min-width: 24px;
-    border-radius: 3px;
+    min-width: 28px;
+    border-radius: 4px;
 }
 
 QScrollBar::handle:horizontal:hover {
@@ -80,22 +80,22 @@ QScrollBar::handle:horizontal:hover {
 
 /* ==================== 3. 分段标题与分组卡片 ==================== */
 QLabel#section_header {
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 700;
     color: #0F172A;
-    padding-bottom: 5px;
+    padding-bottom: 6px;
     border-bottom: 2px solid #0F172A;
-    margin-top: 6px;
-    margin-bottom: 6px;
+    margin-top: 8px;
+    margin-bottom: 8px;
 }
 
 QGroupBox {
     background-color: #FFFFFF;
     border: 1px solid #E2E8F0;
     border-radius: 8px;
-    margin-top: 14px;
+    margin-top: 16px;
     padding: 16px 14px 14px 14px;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 700;
     color: #0F172A;
 }
@@ -117,9 +117,9 @@ QPushButton {
     border: 1px solid #0F172A;
     border-radius: 6px;
     padding: 6px 16px;
-    min-height: 20px;
+    min-height: 32px;
     font-weight: 600;
-    font-size: 13px;
+    font-size: 14px;
 }
 
 QPushButton:hover {
@@ -210,9 +210,9 @@ QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {
     border: 1px solid #CBD5E1;
     border-radius: 6px;
     padding: 5px 10px;
-    min-height: 22px;
+    min-height: 32px;
     color: #0F172A;
-    font-size: 13px;
+    font-size: 14px;
     selection-background-color: #0F172A;
     selection-color: #FFFFFF;
 }
@@ -228,7 +228,7 @@ QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {
 
 QComboBox::drop-down {
     border: none;
-    width: 24px;
+    width: 26px;
 }
 
 QComboBox QAbstractItemView {
@@ -238,11 +238,19 @@ QComboBox QAbstractItemView {
     selection-background-color: #F1F5F9;
     selection-color: #0F172A;
     color: #0F172A;
-    padding: 4px;
+    padding: 6px;
     outline: none;
+    font-size: 14px;
 }
 
-/* ==================== 6. 滑块微调控件 (Sliders) ==================== */
+/* ==================== 6. 单选框与复选框 (Radio & Checkbox) ==================== */
+QRadioButton, QCheckBox {
+    font-size: 14px;
+    color: #0F172A;
+    spacing: 8px;
+}
+
+/* ==================== 7. 滑块微调控件 (Sliders) ==================== */
 QSlider::groove:horizontal {
     height: 6px;
     background: #E2E8F0;
@@ -257,10 +265,10 @@ QSlider::sub-page:horizontal {
 QSlider::handle:horizontal {
     background: #FFFFFF;
     border: 2px solid #0F172A;
-    width: 16px;
-    height: 16px;
-    margin: -5px 0;
-    border-radius: 8px;
+    width: 18px;
+    height: 18px;
+    margin: -6px 0;
+    border-radius: 9px;
 }
 
 QSlider::handle:horizontal:hover {
@@ -268,31 +276,32 @@ QSlider::handle:horizontal:hover {
     border-color: #1E293B;
 }
 
-/* ==================== 7. 表格与列表控件 (Tables & Lists) ==================== */
+/* ==================== 8. 表格与列表控件 (Tables & Lists) ==================== */
 QTableWidget, QListWidget {
     background-color: #FFFFFF;
     border: 1px solid #E2E8F0;
     border-radius: 6px;
     color: #0F172A;
     gridline-color: #F1F5F9;
-    font-size: 13px;
+    font-size: 14px;
     outline: none;
 }
 
 QHeaderView::section {
     background-color: #F8FAFC;
     color: #475569;
-    padding: 6px 8px;
+    padding: 8px 10px;
     border: none;
     border-bottom: 1px solid #E2E8F0;
     font-weight: 600;
-    font-size: 12px;
+    font-size: 13px;
 }
 
 QTableWidget::item, QListWidget::item {
-    padding: 6px 10px;
+    padding: 8px 12px;
     border-bottom: 1px solid #F8FAFC;
     color: #0F172A;
+    font-size: 14px;
 }
 
 QTableWidget::item:hover, QListWidget::item:hover {
@@ -305,7 +314,7 @@ QTableWidget::item:selected, QListWidget::item:selected {
     font-weight: 600;
 }
 
-/* ==================== 8. 进度条 (Progress Bar) ==================== */
+/* ==================== 9. 进度条 (Progress Bar) ==================== */
 QProgressBar {
     border: 1px solid #E2E8F0;
     border-radius: 6px;
@@ -313,8 +322,8 @@ QProgressBar {
     background-color: #F8FAFC;
     color: #0F172A;
     font-weight: 600;
-    font-size: 12px;
-    min-height: 22px;
+    font-size: 13px;
+    min-height: 24px;
 }
 
 QProgressBar::chunk {
@@ -322,19 +331,19 @@ QProgressBar::chunk {
     border-radius: 5px;
 }
 
-/* ==================== 9. 控制台日志文本域 (Text Terminal) ==================== */
+/* ==================== 10. 控制台日志文本域 (Text Terminal) ==================== */
 QTextEdit {
     background-color: #F8FAFC;
     border: 1px solid #E2E8F0;
     border-radius: 6px;
     color: #0F172A;
     font-family: 'Consolas', 'Cascadia Code', 'Courier New', monospace;
-    font-size: 12px;
+    font-size: 13px;
     padding: 8px 10px;
     line-height: 1.4;
 }
 
-/* ==================== 10. 专属指标卡片与状态指示器 ==================== */
+/* ==================== 11. 专属指标卡片与状态指示器 ==================== */
 QLabel#metric_card {
     background-color: #F8FAFC;
     border: 1px solid #E2E8F0;
@@ -342,8 +351,8 @@ QLabel#metric_card {
     padding: 6px 12px;
     font-weight: 700;
     color: #0F172A;
-    font-size: 13px;
-    min-height: 20px;
+    font-size: 14px;
+    min-height: 26px;
 }
 
 QLabel#status_indicator {
