@@ -120,6 +120,7 @@ QPushButton {
     min-height: 32px;
     font-weight: 600;
     font-size: 14px;
+    text-align: center;
 }
 
 QPushButton:hover {
@@ -197,6 +198,7 @@ QPushButton#btn_primary {
     color: #FFFFFF;
     border: 1px solid #0F172A;
     font-weight: 600;
+    text-align: center;
 }
 
 QPushButton#btn_primary:hover {

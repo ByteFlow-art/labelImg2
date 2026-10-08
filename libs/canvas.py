@@ -36,11 +36,13 @@ class Canvas(QWidget):
     deleteRequested = pyqtSignal()
     undoRedoRequested = pyqtSignal()
     singleClickSelected = pyqtSignal()
+    smartClickPoint = pyqtSignal(QPointF)
 
     #CREATE, EDIT = list(range(2))
     CREATE = 0
     EDIT = 1
     CONTINUECREATE = 2
+    SMART_CLICK = 3
 
     epsilon = 7.0
 
@@ -113,6 +115,9 @@ class Canvas(QWidget):
     def editing(self):
         return self.mode == self.EDIT
 
+    def smartClicking(self):
+        return self.mode == self.SMART_CLICK
+
     def setDrawCornerState(self, enabled):
         for shape in reversed([s for s in self.shapes if self.isVisible(s)]):
             shape.alwaysShowCorner=enabled
@@ -121,9 +126,11 @@ class Canvas(QWidget):
 
     def setEditing(self, value=1):
         self.mode = value
-        if value == self.CREATE or value == self.CONTINUECREATE:  # Create
+        if value in (self.CREATE, self.CONTINUECREATE, self.SMART_CLICK):  # Create or Smart Click
             self.unHighlight()
             self.deSelectShape()
+        if value == self.SMART_CLICK:
+            self.overrideCursor(CURSOR_DRAW)
         self.prevPoint = QPointF()
         self.repaint()
 
@@ -181,6 +188,14 @@ class Canvas(QWidget):
         if window.filePath is not None:
             self.parent().window().labelCoordinates.setText(
                 'X: %d; Y: %d' % (pos.x(), pos.y()))
+
+        # Smart Click-to-Bbox mode
+        if self.smartClicking():
+            self.overrideCursor(CURSOR_DRAW)
+            self.prevPoint = pos
+            self.setToolTip("单击目标智能自动成框 (Click-to-BBox)")
+            self.repaint()
+            return
 
         # Polygon drawing.
         if self.drawing():
@@ -341,6 +356,10 @@ class Canvas(QWidget):
             return
 
         if ev.button() == Qt.LeftButton:
+            if self.smartClicking():
+                if not self.outOfPixmap(pos):
+                    self.smartClickPoint.emit(pos)
+                return
             if self.drawing():
                 self.handleDrawing(pos)
                 # CREATE 模式下不触发选中逻辑，防止误选已有标注框
@@ -359,6 +378,8 @@ class Canvas(QWidget):
             self.repaint()
 
     def mouseReleaseEvent(self, ev):
+        if self.smartClicking():
+            return
         self._has_saved_drag_undo = False
         if getattr(self, 'dragIgnoreUntilMouseUp', False):
             self.dragIgnoreUntilMouseUp = False
@@ -860,7 +881,7 @@ class Canvas(QWidget):
             p.drawRect(int(leftTop.x()), int(leftTop.y()), int(rectWidth), int(rectHeight))
 
 
-        if (self.drawing() or self.continueDrawing()) and not self.prevPoint.isNull() and not self.outOfPixmap(self.prevPoint):
+        if (self.drawing() or self.continueDrawing() or self.smartClicking()) and not self.prevPoint.isNull() and not self.outOfPixmap(self.prevPoint):
             oldmode = p.compositionMode()
             p.setCompositionMode(QPainter.RasterOp_SourceXorDestination)
             p.setPen(QPen(QColor(255,255,255), 1/self.scale)) # TODO : limit pen width
@@ -1080,6 +1101,12 @@ class Canvas(QWidget):
             self.drawingPolygon.emit(False)
             self.update()
         elif key == Qt.Key_Escape and self.current is None:
+            if self.smartClicking():
+                self.setEditing(self.EDIT)
+                self.cancelDraw.emit()
+                self.update()
+                ev.accept()
+                return
             if self.drawing() or self.continueDrawing():
                 self.cancelDraw.emit()
             self.finalise()

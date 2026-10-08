@@ -25,25 +25,46 @@ class SafeComboBox(QComboBox):
 class SafeSpinBox(QSpinBox):
     """
     数值调节型参数控件：
-    禁用滚轮切换，通过键盘点击输入及末尾微调按钮调节。
+    防误调机制：未聚焦时忽略滚轮（防止滚动浏览面板时误篡改参数）；鼠标点击获得焦点后才响应滚轮调节。
     """
+    def __init__(self, *args, **kwargs):
+        super(SafeSpinBox, self).__init__(*args, **kwargs)
+        self.setFocusPolicy(Qt.StrongFocus)
+
     def wheelEvent(self, event):
-        event.ignore()
+        if self.hasFocus():
+            super(SafeSpinBox, self).wheelEvent(event)
+        else:
+            event.ignore()
 
 
 class SafeDoubleSpinBox(QDoubleSpinBox):
     """
     浮点数值调节型参数控件：
-    禁用滚轮切换，通过键盘点击输入及末尾微调按钮调节。
+    防误调机制：未聚焦时忽略滚轮；鼠标点击获得焦点后才响应滚轮调节。
     """
+    def __init__(self, *args, **kwargs):
+        super(SafeDoubleSpinBox, self).__init__(*args, **kwargs)
+        self.setFocusPolicy(Qt.StrongFocus)
+
     def wheelEvent(self, event):
-        event.ignore()
+        if self.hasFocus():
+            super(SafeDoubleSpinBox, self).wheelEvent(event)
+        else:
+            event.ignore()
 
 
 class SafeSlider(QSlider):
     """
     滑块调节控件：
-    禁用滚轮切换，通过鼠标直接点击或拖动滑块调节。
+    防误调机制：未聚焦时忽略滚轮；鼠标点击获得焦点后才响应滚轮调节。
     """
+    def __init__(self, *args, **kwargs):
+        super(SafeSlider, self).__init__(*args, **kwargs)
+        self.setFocusPolicy(Qt.StrongFocus)
+
     def wheelEvent(self, event):
-        event.ignore()
+        if self.hasFocus():
+            super(SafeSlider, self).wheelEvent(event)
+        else:
+            event.ignore()

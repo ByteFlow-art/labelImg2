@@ -387,6 +387,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.canvas.toggleEdit.connect(self.toggleExtraEditing)
         self.canvas.deleteRequested.connect(self.deleteSelectedShape)
         self.canvas.undoRedoRequested.connect(self.toggle_undo_redo)
+        self.canvas.smartClickPoint.connect(self.on_canvas_smart_clicked)
 
         self.setCentralWidget(scroll)
         self.addDockWidget(Qt.RightDockWidgetArea, self.dock)
@@ -419,6 +420,9 @@ class MainWindow(QMainWindow, WindowMixin):
         changeSavedir = action('&Labels Dir', self.changeSavedirDialog,
                                'Ctrl+r', 'icon_labels_dir.svg', u'Select labels save directory')
 
+        openVideo = action('&Video Extract', self.openVideoExtractDialog,
+                           'Ctrl+Shift+V', 'video.svg', u'导入视频进行逐帧预览与智能抽帧切片 (快捷键: Ctrl+Shift+V)')
+
         saveFormat = action('&Save Format', self.popupSaveFormatMenu,
                             None, 'icon_save_format.svg', u'Change annotation save format')
 
@@ -441,6 +445,10 @@ class MainWindow(QMainWindow, WindowMixin):
 
         createRo = action('Create\nRotatedRBox', self.createRoShape,
                         'e', 'rectRo.png', u'Draw a new RotatedRBox', enabled=False)
+
+        smartClick = action('智能点选成框', self.toggleSmartClickMode,
+                            'Ctrl+K', 'smart_click.svg', u'单击目标智能吸附外接成框 (快捷键: Ctrl+K)',
+                            checkable=True, enabled=False)
 
         delete = action('Delete\nRectBox', self.deleteSelectedShape,
                         'Delete', 'cancel2.svg', u'Delete (Shortcut: Q / Del)', enabled=False)
@@ -514,6 +522,7 @@ class MainWindow(QMainWindow, WindowMixin):
 
         # Store actions for further handling.
         self.actions = struct(save=save, open=openDir, openDir=openDir, openRecent=openRecent,
+                              openVideo=openVideo, smartClick=smartClick,
                               saveFormat=saveFormat, close=close, resetAll = resetAll,
                               create=create, createSo=createSo, createRo=createRo, delete=delete, 
                               labelAsBack=labelAsBack, deleteLabel=deleteLabel, edit=edit, copy=copy,
@@ -521,13 +530,13 @@ class MainWindow(QMainWindow, WindowMixin):
                               fitWindow=fitWindow, fitWidth=fitWidth, play=play,
                               zoomActions=zoomActions,
                               fileMenuActions=(
-                                  openDir, openRecent, opendir, changeSavedir, saveFormat, save, close, resetAll, quit),
+                                  openDir, openRecent, opendir, changeSavedir, openVideo, saveFormat, save, close, resetAll, quit),
                               beginner=(),
                               editMenu=(edit, copy, delete,
                                         None),
-                              beginnerContext=(create, createSo, createRo, copy, delete, labelAsBack, deleteLabel),
+                              beginnerContext=(create, createSo, createRo, smartClick, copy, delete, labelAsBack, deleteLabel),
                               onLoadActive=(
-                                  close, create),
+                                  close, create, createRo, smartClick),
                               onShapesPresent=())
 
         # 保存文件格式类型子菜单 (Save Format)
@@ -581,7 +590,7 @@ class MainWindow(QMainWindow, WindowMixin):
         self.drawCorner.triggered.connect(self.canvas.setDrawCornerState)
         
         addActions(self.menus.file,
-                   (openDir, self.menus.recentProjects, opendir, changeSavedir, self.menus.saveFormat, 
+                   (openDir, self.menus.recentProjects, opendir, changeSavedir, openVideo, self.menus.saveFormat, 
                     verify, save, resetAll, quit))
 
         addActions(self.menus.help, (showInfo,))
@@ -608,11 +617,11 @@ class MainWindow(QMainWindow, WindowMixin):
         yoloTrainAction = action('YOLO模型训练', self.openYOLOTrainDialog, None, 'yolo_train.svg', u'打开 YOLO 模型训练面板 (数据训练与权重导出)')
 
         self.menus.ai = self.menu('Yolo')
-        addActions(self.menus.ai, (yoloAutoSingleAction, yoloAutoBatchAction, yoloAutoConfigAction, None, yoloTrainAction))
+        addActions(self.menus.ai, (smartClick, None, yoloAutoSingleAction, yoloAutoBatchAction, yoloAutoConfigAction, None, yoloTrainAction))
 
         self.tools = self.toolbar('Tools')
-        self.actions.beginner = (openDir, openRecent, opendir, changeSavedir, saveFormat, verify, save, None,
-            create, createSo, createRo, copy, delete, None,
+        self.actions.beginner = (openDir, openRecent, opendir, changeSavedir, openVideo, saveFormat, verify, save, None,
+            create, createSo, createRo, smartClick, copy, delete, None,
             yoloAutoSingleAction, yoloAutoBatchAction, yoloAutoConfigAction, yoloTrainAction, None,
             zoomIn, zoom, zoomOut, zoomOrg, fitWindow, fitWidth)
 
@@ -1054,6 +1063,9 @@ class MainWindow(QMainWindow, WindowMixin):
         self.actions.create.setEnabled(False)
         self.actions.createSo.setEnabled(False)
         self.actions.createRo.setEnabled(False)
+        if hasattr(self.actions, 'smartClick'):
+            self.actions.smartClick.setEnabled(False)
+            self.actions.smartClick.setChecked(False)
         self.canvas.overrideCursor(Qt.CrossCursor)
 
     def createSoShape(self):
@@ -1064,6 +1076,9 @@ class MainWindow(QMainWindow, WindowMixin):
         self.actions.create.setEnabled(False)
         self.actions.createSo.setEnabled(False)
         self.actions.createRo.setEnabled(False)
+        if hasattr(self.actions, 'smartClick'):
+            self.actions.smartClick.setEnabled(False)
+            self.actions.smartClick.setChecked(False)
         self.canvas.overrideCursor(Qt.CrossCursor)
 
     def createRoShape(self):
@@ -1077,6 +1092,9 @@ class MainWindow(QMainWindow, WindowMixin):
         self.actions.create.setEnabled(False)
         self.actions.createSo.setEnabled(False)
         self.actions.createRo.setEnabled(False)
+        if hasattr(self.actions, 'smartClick'):
+            self.actions.smartClick.setEnabled(False)
+            self.actions.smartClick.setChecked(False)
         self.canvas.overrideCursor(Qt.CrossCursor)
     def createCancel(self):
         self.canvas.setEditing(1)
@@ -1084,6 +1102,9 @@ class MainWindow(QMainWindow, WindowMixin):
         self.actions.create.setEnabled(True)
         self.actions.createSo.setEnabled(True)
         self.actions.createRo.setEnabled(True)
+        if hasattr(self.actions, 'smartClick'):
+            self.actions.smartClick.setEnabled(True)
+            self.actions.smartClick.setChecked(False)
 
     def toggleDrawingSensitive(self, drawing=True):
         if not drawing:
@@ -1092,9 +1113,128 @@ class MainWindow(QMainWindow, WindowMixin):
             self.actions.create.setEnabled(True)
             self.actions.createSo.setEnabled(True)
             self.actions.createRo.setEnabled(True)
+            if hasattr(self.actions, 'smartClick'):
+                self.actions.smartClick.setEnabled(True)
+                self.actions.smartClick.setChecked(False)
 
     def toggleDrawMode(self, edit=1):
         self.canvas.setEditing(edit)
+
+    def toggleSmartClickMode(self, checked=None):
+        if checked is None:
+            checked = self.actions.smartClick.isChecked()
+        else:
+            self.actions.smartClick.setChecked(checked)
+
+        if checked:
+            self.canvas.deSelectShape()
+            self.canvas.current = None
+            self.canvas.hShape = None
+            self.canvas.hVertex = None
+            self.canvas.prevPoint = QPointF()
+            self.canvas.setEditing(Canvas.SMART_CLICK)
+            self.canvas.canDrawRotatedRect = False
+            self.actions.create.setEnabled(False)
+            self.actions.createSo.setEnabled(False)
+            self.actions.createRo.setEnabled(False)
+            self.canvas.overrideCursor(Qt.CrossCursor)
+            self.statusBar().showMessage('已进入【智能点选成框】模式：在目标物体上单击鼠标左键即可自动吸附成框 (按 Esc 或再次点击退出)')
+        else:
+            self.createCancel()
+            self.statusBar().showMessage('已退出智能点选成框模式')
+
+    def get_current_yolo_model(self):
+        """获取当前就绪的 YOLO 模型实例（优先取模型中心，其次取后台预热缓存）"""
+        if hasattr(self, 'auto_annotate_dialog') and self.auto_annotate_dialog is not None:
+            if hasattr(self.auto_annotate_dialog, 'annotator') and getattr(self.auto_annotate_dialog.annotator, 'model', None) is not None:
+                return self.auto_annotate_dialog.annotator.model
+        if getattr(self, 'cached_annotator', None) is not None:
+            if hasattr(self.cached_annotator, 'model') and getattr(self.cached_annotator, 'model', None) is not None:
+                return self.cached_annotator.model
+        return None
+
+    def on_canvas_smart_clicked(self, pos):
+        """响应智能点选点击信号：根据点击像素坐标自动提取物体轮廓或吸附目标成框"""
+        if not self.filePath or not os.path.exists(self.filePath):
+            self.statusBar().showMessage("当前未打开任何图片，无法使用智能点选成框")
+            return
+
+        from utils.smart_bbox import smart_snap_bbox
+        yolo_model = self.get_current_yolo_model()
+        click_xy = (pos.x(), pos.y())
+
+        snap_res = smart_snap_bbox(self.filePath, click_xy, yolo_model=yolo_model)
+        if snap_res is None:
+            self.statusBar().showMessage("未在点击区域识别到明显物体轮廓，请尝试点击目标主体中心或手动拉框")
+            return
+
+        (xmin, ymin, xmax, ymax), cls_name, conf = snap_res
+
+        # 保存撤销快照 (支持 Ctrl+Z 一键撤销)
+        self.save_undo_state()
+
+        label_text = cls_name if cls_name else self.default_label
+        if not label_text:
+            if hasattr(self, 'labelHist') and self.labelHist:
+                label_text = self.labelHist[0]
+            else:
+                label_text = "object"
+            self.default_label = label_text
+
+        shape = Shape(label=label_text)
+        shape.isRotated = False
+        shape.addPoint(QPointF(xmin, ymin))
+        shape.addPoint(QPointF(xmax, ymin))
+        shape.addPoint(QPointF(xmax, ymax))
+        shape.addPoint(QPointF(xmin, ymax))
+        shape.close()
+
+        color = generateColorByText(shape.label)
+        shape.line_color = color
+        shape.fill_color = color
+        shape.alwaysShowCorner = self.drawCorner.isChecked()
+
+        self.canvas.shapes.append(shape)
+        self.addLabel(shape)
+        self.setDirty()
+        self.canvas.selectShape(shape)
+        self.canvas.reorderShapesByArea()
+        self.canvas.update()
+
+        conf_str = f" [AI置信度: {conf:.2f}]" if conf > 0 else " [边缘轮廓提取]"
+        self.statusBar().showMessage(f"智能成框成功: [{label_text}]{conf_str} 区域: ({int(xmin)}, {int(ymin)}) - ({int(xmax)}, {int(ymax)})")
+
+    def get_project_image_dir(self):
+        """获取当前工作区加载的项目图片文件夹目录"""
+        if hasattr(self, 'dirname') and self.dirname and os.path.isdir(self.dirname):
+            return os.path.abspath(self.dirname)
+        if hasattr(self, 'lastOpenDir') and self.lastOpenDir and os.path.isdir(self.lastOpenDir):
+            return os.path.abspath(self.lastOpenDir)
+        if hasattr(self, 'filePath') and self.filePath and os.path.exists(self.filePath):
+            return os.path.abspath(os.path.dirname(self.filePath))
+        return ""
+
+    def openVideoExtractDialog(self):
+        """打开视频导入与智能抽帧工作台"""
+        if not hasattr(self, 'video_dialog') or self.video_dialog is None:
+            from ui.video_extract_dialog import VideoExtractDialog
+            self.video_dialog = VideoExtractDialog(self)
+            self.video_dialog.frames_imported.connect(self.on_video_frames_imported)
+        
+        # 每次打开时，默认将抽帧输出目录设为项目图片文件夹目录 (若已打开项目图片)
+        proj_dir = self.get_project_image_dir()
+        if proj_dir:
+            self.video_dialog.set_default_output_dir(proj_dir)
+
+        self.video_dialog.show()
+        self.video_dialog.raise_()
+        self.video_dialog.activateWindow()
+
+    def on_video_frames_imported(self, output_dir):
+        """视频抽帧完成并请求导入到当前工作区"""
+        if output_dir and os.path.exists(output_dir):
+            self.importDirImages(output_dir)
+            self.statusBar().showMessage(f"已成功载入视频抽帧数据集: {output_dir}")
 
     def toggleExtraEditing(self, state):
         index = self.labelsm.currentIndex()
@@ -1636,6 +1776,9 @@ class MainWindow(QMainWindow, WindowMixin):
             self.actions.create.setEnabled(True)
             self.actions.createSo.setEnabled(True)
             self.actions.createRo.setEnabled(True)
+            if hasattr(self.actions, 'smartClick'):
+                self.actions.smartClick.setEnabled(True)
+                self.actions.smartClick.setChecked(False)
 
         self.setDirty()
 

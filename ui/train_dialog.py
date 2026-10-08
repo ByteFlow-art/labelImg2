@@ -221,15 +221,14 @@ class TrainDialog(QDialog):
         bottom_bar.addWidget(self.lbl_train_status)
         bottom_bar.addStretch()
 
-        self.btn_apply = QPushButton(" 应用训练模型至自动标注")
+        self.btn_apply = QPushButton("应用训练模型至自动标注")
         self.btn_apply.setIcon(self.get_icon("export.svg"))
         self.btn_apply.setObjectName("btn_secondary")
         self.btn_apply.setEnabled(False)
         self.btn_apply.clicked.connect(self.apply_trained_model)
         bottom_bar.addWidget(self.btn_apply)
 
-        self.btn_start = QPushButton(" 开始模型训练")
-        self.btn_start.setIcon(self.get_icon("play.svg"))
+        self.btn_start = QPushButton("开始模型训练")
         self.btn_start.setObjectName("btn_primary")
         self.btn_start.clicked.connect(self.start_train)
         bottom_bar.addWidget(self.btn_start)
