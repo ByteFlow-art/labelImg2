@@ -447,7 +447,7 @@ class MainWindow(QMainWindow, WindowMixin):
                         'e', 'rectRo.png', u'Draw a new RotatedRBox', enabled=False)
 
         smartClick = action('智能点选成框', self.toggleSmartClickMode,
-                            'Ctrl+K', 'smart_click.svg', u'单击目标智能吸附外接成框 (快捷键: Ctrl+K)',
+                            'r', 'smart_click.svg', u'单击目标智能吸附外接成框 (快捷键: R)',
                             checkable=True, enabled=False)
 
         delete = action('Delete\nRectBox', self.deleteSelectedShape,
@@ -1154,7 +1154,7 @@ class MainWindow(QMainWindow, WindowMixin):
         return None
 
     def on_canvas_smart_clicked(self, pos):
-        """响应智能点选点击信号：根据点击像素坐标自动提取物体轮廓或吸附目标成框"""
+        """响应智能点选点击信号：根据点击像素坐标自动提取物体轮廓或吸附目标成框并播放吸附动效"""
         if not self.filePath or not os.path.exists(self.filePath):
             self.statusBar().showMessage("当前未打开任何图片，无法使用智能点选成框")
             return
@@ -1165,44 +1165,55 @@ class MainWindow(QMainWindow, WindowMixin):
 
         snap_res = smart_snap_bbox(self.filePath, click_xy, yolo_model=yolo_model)
         if snap_res is None:
+            if hasattr(self.canvas, 'showFailedClickEffect'):
+                self.canvas.showFailedClickEffect(pos)
             self.statusBar().showMessage("未在点击区域识别到明显物体轮廓，请尝试点击目标主体中心或手动拉框")
             return
 
-        (xmin, ymin, xmax, ymax), cls_name, conf = snap_res
+        (xmin, ymin, xmax, ymax) = snap_res[0]
+        cls_name = snap_res[1]
+        conf = snap_res[2]
+        contour_pts = snap_res[3] if len(snap_res) > 3 else None
 
-        # 保存撤销快照 (支持 Ctrl+Z 一键撤销)
-        self.save_undo_state()
+        def finalize_shape():
+            # 保存撤销快照 (支持 Ctrl+Z 一键撤销)
+            self.save_undo_state()
 
-        label_text = cls_name if cls_name else self.default_label
-        if not label_text:
-            if hasattr(self, 'labelHist') and self.labelHist:
-                label_text = self.labelHist[0]
-            else:
-                label_text = "object"
-            self.default_label = label_text
+            label_text = cls_name if cls_name else self.default_label
+            if not label_text:
+                if hasattr(self, 'labelHist') and self.labelHist:
+                    label_text = self.labelHist[0]
+                else:
+                    label_text = "object"
+                self.default_label = label_text
 
-        shape = Shape(label=label_text)
-        shape.isRotated = False
-        shape.addPoint(QPointF(xmin, ymin))
-        shape.addPoint(QPointF(xmax, ymin))
-        shape.addPoint(QPointF(xmax, ymax))
-        shape.addPoint(QPointF(xmin, ymax))
-        shape.close()
+            shape = Shape(label=label_text)
+            shape.isRotated = False
+            shape.addPoint(QPointF(xmin, ymin))
+            shape.addPoint(QPointF(xmax, ymin))
+            shape.addPoint(QPointF(xmax, ymax))
+            shape.addPoint(QPointF(xmin, ymax))
+            shape.close()
 
-        color = generateColorByText(shape.label)
-        shape.line_color = color
-        shape.fill_color = color
-        shape.alwaysShowCorner = self.drawCorner.isChecked()
+            color = generateColorByText(shape.label)
+            shape.line_color = color
+            shape.fill_color = color
+            shape.alwaysShowCorner = self.drawCorner.isChecked()
 
-        self.canvas.shapes.append(shape)
-        self.addLabel(shape)
-        self.setDirty()
-        self.canvas.selectShape(shape)
-        self.canvas.reorderShapesByArea()
-        self.canvas.update()
+            self.canvas.shapes.append(shape)
+            self.addLabel(shape)
+            self.setDirty()
+            self.canvas.selectShape(shape)
+            self.canvas.reorderShapesByArea()
+            self.canvas.update()
 
-        conf_str = f" [AI置信度: {conf:.2f}]" if conf > 0 else " [边缘轮廓提取]"
-        self.statusBar().showMessage(f"智能成框成功: [{label_text}]{conf_str} 区域: ({int(xmin)}, {int(ymin)}) - ({int(xmax)}, {int(ymax)})")
+            conf_str = f" [AI置信度: {conf:.2f}]" if conf > 0 else " [边缘轮廓提取]"
+            self.statusBar().showMessage(f"智能吸附成框成功: [{label_text}]{conf_str} 区域: ({int(xmin)}, {int(ymin)}) - ({int(xmax)}, {int(ymax)})")
+
+        if hasattr(self.canvas, 'startSnappingAnimation'):
+            self.canvas.startSnappingAnimation(pos, (xmin, ymin, xmax, ymax), contour_pts, on_finish=finalize_shape)
+        else:
+            finalize_shape()
 
     def get_project_image_dir(self):
         """获取当前工作区加载的项目图片文件夹目录"""

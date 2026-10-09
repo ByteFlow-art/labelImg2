@@ -93,6 +93,7 @@ def detect_contour_bbox(image_bgr, click_point, roi_radius=120):
     contours, _ = cv2.findContours(combined, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     best_box = None
+    best_cnt = None
     min_dist = float('inf')
 
     for cnt in contours:
@@ -120,6 +121,7 @@ def detect_contour_bbox(image_bgr, click_point, roi_radius=120):
                 if center_dist < min_dist:
                     min_dist = center_dist
                     best_box = (abs_xmin, abs_ymin, abs_xmax, abs_ymax)
+                    best_cnt = cnt
 
     # 方法 C: GrabCut 交互式图割分割 (对齐 LabelQuick 交互分割与智能抠图外接矩形)
     if best_box is None:
@@ -152,6 +154,7 @@ def detect_contour_bbox(image_bgr, click_point, roi_radius=120):
                     abs_ymax = min(h, y1 + ry + rh)
                     if abs_xmax - abs_xmin >= 15 and abs_ymax - abs_ymin >= 15:
                         best_box = (abs_xmin, abs_ymin, abs_xmax, abs_ymax)
+                        best_cnt = cnt
                         break
         except Exception:
             pass
@@ -169,6 +172,7 @@ def detect_contour_bbox(image_bgr, click_point, roi_radius=120):
                 abs_ymax = min(h, y1 + ry + rh)
                 if abs_xmax - abs_xmin >= 15 and abs_ymax - abs_ymin >= 15:
                     best_box = (abs_xmin, abs_ymin, abs_xmax, abs_ymax)
+                    best_cnt = cnt
                     break
 
     # 最后的默认兜底：以点击点为中心提供自适应初始尺寸，防止落空
@@ -180,7 +184,19 @@ def detect_contour_bbox(image_bgr, click_point, roi_radius=120):
         abs_ymax = min(h, cy + default_hw)
         best_box = (abs_xmin, abs_ymin, abs_xmax, abs_ymax)
 
-    return best_box
+    contour_pts = []
+    if best_cnt is not None:
+        try:
+            epsilon = 0.005 * cv2.arcLength(best_cnt, True)
+            approx = cv2.approxPolyDP(best_cnt, epsilon, True)
+            contour_pts = [(int(pt[0][0] + x1), int(pt[0][1] + y1)) for pt in approx]
+        except Exception:
+            contour_pts = [(int(pt[0][0] + x1), int(pt[0][1] + y1)) for pt in best_cnt]
+    elif best_box is not None:
+        bx1, by1, bx2, by2 = best_box
+        contour_pts = [(bx1, by1), (bx2, by1), (bx2, by2), (bx1, by2)]
+
+    return best_box, contour_pts
 
 
 def smart_snap_bbox(image_input, click_point, yolo_model=None):
@@ -229,14 +245,17 @@ def smart_snap_bbox(image_input, click_point, yolo_model=None):
             matched = find_yolo_box_at_point((px, py), candidate_boxes)
             if matched:
                 b = matched['box']
-                return (int(round(b[0])), int(round(b[1])), int(round(b[2])), int(round(b[3]))), matched['label'], matched['score']
+                bx = (int(round(b[0])), int(round(b[1])), int(round(b[2])), int(round(b[3])))
+                c_pts = [(bx[0], bx[1]), (bx[2], bx[1]), (bx[2], bx[3]), (bx[0], bx[3])]
+                return bx, matched['label'], matched['score'], c_pts
         except Exception:
             pass
 
     # 2. 边缘与轮廓感知
-    contour_box = detect_contour_bbox(img_bgr, (px, py))
-    if contour_box:
+    res = detect_contour_bbox(img_bgr, (px, py))
+    if res:
+        contour_box, contour_pts = res
         xmin, ymin, xmax, ymax = contour_box
-        return (int(xmin), int(ymin), int(xmax), int(ymax)), "", 0.0
+        return (int(xmin), int(ymin), int(xmax), int(ymax)), "", 0.0, contour_pts
 
     return None

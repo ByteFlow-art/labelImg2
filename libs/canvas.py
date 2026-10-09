@@ -84,8 +84,18 @@ class Canvas(QWidget):
         self.hideNormal = False
         self.canOutOfBounding = True
         self.showCenter = False
-        
-        #self.setAttribute(Qt.WA_PaintOnScreen)
+
+        # 智能吸附成框动态视觉特效状态 (60 FPS 动态展开 + 轮廓光晕 + 声呐波纹)
+        self.snapping_active = False
+        self.snapping_failed = False
+        self.snapping_click_pos = QPointF()
+        self.snapping_target_rect = None  # (xmin, ymin, xmax, ymax)
+        self.snapping_contour = []        # list of QPointF
+        self.snapping_progress = 0.0      # 0.0 -> 1.0
+        self.snapping_timer = QTimer(self)
+        self.snapping_timer.setInterval(16)
+        self.snapping_timer.timeout.connect(self._on_snapping_timer_tick)
+        self.snapping_callback = None
 
 
         
@@ -880,6 +890,9 @@ class Canvas(QWidget):
             # p.drawRect(leftTop.x(), leftTop.y(), rectWidth, rectHeight)
             p.drawRect(int(leftTop.x()), int(leftTop.y()), int(rectWidth), int(rectHeight))
 
+        # 智能吸附成框动态视觉特效
+        if self.snapping_active:
+            self._paint_snapping_effect(p)
 
         if (self.drawing() or self.continueDrawing() or self.smartClicking()) and not self.prevPoint.isNull() and not self.outOfPixmap(self.prevPoint):
             oldmode = p.compositionMode()
@@ -902,19 +915,152 @@ class Canvas(QWidget):
             pal.setColor(self.backgroundRole(), QColor(232, 232, 232, 255))
             self.setPalette(pal)
 
-        #p.translate(-self.offsetToCenter())
-        #p.scale(1/self.scale, 1/self.scale)
-        #if self.localScalePixmap is not None:
-        #    p0 = QPoint(0, 0)
-        #    p1 = self.mapFromParent(p0)
-        #    if p1.x() > 0:
-        #        p0.setX(p1.x())
-        #    if p1.y() > 0:
-        #        p0.setY(p1.y())
-            
-        #    p.drawPixmap(p0.x(), p0.y(), self.localScalePixmap)
-
         p.end()
+
+    def startSnappingAnimation(self, click_pos, target_rect, contour_pts=None, on_finish=None):
+        """开启智能吸附成框动态视觉特效 (60 FPS 渐进展开与轮廓光晕)，动效完成或被打断时自动落地成框"""
+        if self.snapping_active and self.snapping_callback:
+            try:
+                cb = self.snapping_callback
+                self.snapping_callback = None
+                cb()
+            except Exception:
+                pass
+
+        self.snapping_click_pos = QPointF(click_pos)
+        self.snapping_target_rect = target_rect
+        self.snapping_contour = [QPointF(float(pt[0]), float(pt[1])) for pt in contour_pts] if contour_pts else []
+        self.snapping_progress = 0.0
+        self.snapping_failed = False
+        self.snapping_callback = on_finish
+        self.snapping_active = True
+        self.snapping_timer.start(16)
+        self.update()
+
+    def showFailedClickEffect(self, click_pos):
+        """点击未识别到目标时的动态告警波纹反馈"""
+        self.snapping_click_pos = QPointF(click_pos)
+        self.snapping_target_rect = None
+        self.snapping_contour = []
+        self.snapping_progress = 0.0
+        self.snapping_failed = True
+        self.snapping_callback = None
+        self.snapping_active = True
+        self.snapping_timer.start(16)
+        self.update()
+
+    def _on_snapping_timer_tick(self):
+        if not self.snapping_active:
+            self.snapping_timer.stop()
+            return
+
+        step = 0.075 if not self.snapping_failed else 0.12  # ~220ms 丝滑展开
+        self.snapping_progress += step
+        if self.snapping_progress >= 1.0:
+            self.snapping_progress = 1.0
+            self.snapping_timer.stop()
+            self.snapping_active = False
+            self.snapping_failed = False
+            self.update()
+            if self.snapping_callback:
+                cb = self.snapping_callback
+                self.snapping_callback = None
+                try:
+                    cb()
+                except Exception as e:
+                    print(f"[Snapping Callback Error] {e}", flush=True)
+        else:
+            self.update()
+
+    def _paint_snapping_effect(self, p):
+        """绘制智能吸附过程动态视觉特效 (点击种子点 + 物体轮廓高亮 + 动态展开矩形框 + 四角锚定)"""
+        t = min(1.0, max(0.0, self.snapping_progress))
+        # 缓动函数：三次贝塞尔减速曲线 (Cubic Ease-Out)，前快后稳科技感吸附
+        ease = 1.0 - (1.0 - t) ** 3
+
+        cx = self.snapping_click_pos.x()
+        cy = self.snapping_click_pos.y()
+        scale = max(0.05, self.scale)
+
+        p.save()
+        p.setRenderHint(QPainter.Antialiasing, True)
+
+        # ---------------- 失败模式：红色扩散声呐波纹 ----------------
+        if self.snapping_failed:
+            fail_r = (6.0 + ease * 32.0) / scale
+            fail_alpha = int(max(0, (1.0 - ease) * 220))
+            p.setPen(QPen(QColor(244, 63, 94, fail_alpha), 2.2 / scale))
+            p.setBrush(Qt.NoBrush)
+            p.drawEllipse(QPointF(cx, cy), fail_r, fail_r)
+            # 中心红色提示点
+            p.setPen(QPen(QColor(255, 255, 255, fail_alpha), 1.0 / scale))
+            p.setBrush(QBrush(QColor(244, 63, 94, fail_alpha)))
+            p.drawEllipse(QPointF(cx, cy), 4.0 / scale, 4.0 / scale)
+            p.restore()
+            return
+
+        # ---------------- 成功吸附模式 ----------------
+        # 1. 点击中心提示种子点 (Prompt Seed Point & Expanding Sonar Ripple)
+        dot_r = 5.0 / scale
+        p.setPen(QPen(QColor(255, 255, 255, int((1.0 - ease * 0.4) * 255)), 1.5 / scale))
+        p.setBrush(QBrush(QColor(6, 182, 212)))  # Electric Cyan 霓虹青
+        p.drawEllipse(QPointF(cx, cy), dot_r, dot_r)
+
+        # 向外扩散的吸附声呐波纹圈 (Ripple Ring)
+        ripple_r = (8.0 + ease * 45.0) / scale
+        ripple_alpha = int(max(0, (1.0 - ease) * 230))
+        p.setPen(QPen(QColor(6, 182, 212, ripple_alpha), 2.0 / scale))
+        p.setBrush(Qt.NoBrush)
+        p.drawEllipse(QPointF(cx, cy), ripple_r, ripple_r)
+
+        # 2. 物体真实边缘轮廓光晕 (Object Edge Contour Overlay，复刻 LabelQuick drawContours 精华)
+        if self.snapping_contour and len(self.snapping_contour) > 2:
+            poly = QPolygonF(self.snapping_contour)
+            contour_alpha = int(ease * 220)
+            fill_alpha = int(ease * 55)
+            # 荧光翡翠绿边缘描线与柔和填充
+            p.setPen(QPen(QColor(16, 185, 129, contour_alpha), 2.5 / scale, Qt.SolidLine))
+            p.setBrush(QBrush(QColor(16, 185, 129, fill_alpha)))
+            p.drawPolygon(poly)
+
+        # 3. 动态扩张吸附外接矩形框 (Expanding Snapping Bounding Box)
+        if self.snapping_target_rect:
+            tx1, ty1, tx2, ty2 = self.snapping_target_rect
+            tw = max(1.0, tx2 - tx1)
+            th = max(1.0, ty2 - ty1)
+
+            # 从点击种子点平滑插值扩张到目标边界框
+            curr_x1 = cx + (tx1 - cx) * ease
+            curr_y1 = cy + (ty1 - cy) * ease
+            curr_x2 = cx + (tx2 - cx) * ease
+            curr_y2 = cy + (ty2 - cy) * ease
+            curr_w = max(1.0, curr_x2 - curr_x1)
+            curr_h = max(1.0, curr_y2 - curr_y1)
+            curr_rect = QRectF(curr_x1, curr_y1, curr_w, curr_h)
+
+            box_alpha = int(140 + ease * 115)
+            box_style = Qt.DashLine if ease < 0.65 else Qt.SolidLine
+            p.setPen(QPen(QColor(6, 182, 212, box_alpha), 2.0 / scale, box_style))
+            p.setBrush(QBrush(QColor(6, 182, 212, int(ease * 35))))
+            p.drawRect(curr_rect)
+
+            # 4. 角落吸附卡扣标线 (Corner Snap Brackets)
+            bracket_len = min(14.0 / scale, min(curr_w, curr_h) * 0.28)
+            p.setPen(QPen(QColor(255, 255, 255, int(ease * 255)), 2.5 / scale))
+            # 左上
+            p.drawLine(QPointF(curr_x1, curr_y1), QPointF(curr_x1 + bracket_len, curr_y1))
+            p.drawLine(QPointF(curr_x1, curr_y1), QPointF(curr_x1, curr_y1 + bracket_len))
+            # 右上
+            p.drawLine(QPointF(curr_x2, curr_y1), QPointF(curr_x2 - bracket_len, curr_y1))
+            p.drawLine(QPointF(curr_x2, curr_y1), QPointF(curr_x2, curr_y1 + bracket_len))
+            # 左下
+            p.drawLine(QPointF(curr_x1, curr_y2), QPointF(curr_x1 + bracket_len, curr_y2))
+            p.drawLine(QPointF(curr_x1, curr_y2), QPointF(curr_x1, curr_y2 - bracket_len))
+            # 右下
+            p.drawLine(QPointF(curr_x2, curr_y2), QPointF(curr_x2 - bracket_len, curr_y2))
+            p.drawLine(QPointF(curr_x2, curr_y2), QPointF(curr_x2, curr_y2 - bracket_len))
+
+        p.restore()
 
         #pp = self._painter
         #pp.begin(self)
@@ -1167,10 +1313,6 @@ class Canvas(QWidget):
                     print("[Shortcut F Terminal] 旋转标注框 (-90°)", flush=True)
             else:
                 print("[提示] 当前选中为标准矩形框(W)，不可旋转；仅旋转框(E)支持旋转", flush=True)
-        elif key == Qt.Key_R or txt == 'r':
-            self.undoRedoRequested.emit()
-            ev.accept()
-            return
         elif key == Qt.Key_O or txt == 'o':
             self.canOutOfBounding = not self.canOutOfBounding
         elif key == Qt.Key_B or txt == 'b':
