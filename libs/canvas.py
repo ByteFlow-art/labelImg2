@@ -77,7 +77,9 @@ class Canvas(QWidget):
         # Set widget options.
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.WheelFocus)
-        self.verified = False
+        self._verified = False
+        self.setAutoFillBackground(True)
+        self.updateBackgroundColor()
 
         self.canDrawRotatedRect = True
         self.hideRotated = False
@@ -99,6 +101,23 @@ class Canvas(QWidget):
 
 
         
+
+    @property
+    def verified(self):
+        return getattr(self, '_verified', False)
+
+    @verified.setter
+    def verified(self, value):
+        self._verified = bool(value)
+        self.updateBackgroundColor()
+
+    def updateBackgroundColor(self):
+        pal = self.palette()
+        if getattr(self, '_verified', False):
+            pal.setColor(self.backgroundRole(), QColor(184, 239, 38, 128))
+        else:
+            pal.setColor(self.backgroundRole(), QColor(232, 232, 232, 255))
+        self.setPalette(pal)
 
     def setDrawingColor(self, qColor):
         self.drawingLineColor = qColor
@@ -850,72 +869,60 @@ class Canvas(QWidget):
         if not self.pixmap:
             return super(Canvas, self).paintEvent(event)
 
-        p = self._painter
-        p.begin(self)
+        p = QPainter()
+        if not p.begin(self):
+            return super(Canvas, self).paintEvent(event)
 
-        p.setRenderHint(QPainter.HighQualityAntialiasing)
-        if self.scale < 1.0:
-            p.setRenderHint(QPainter.SmoothPixmapTransform)
-            
-        p.scale(self.scale, self.scale)
-        p.translate(self.offsetToCenter())
+        try:
+            p.setRenderHint(QPainter.HighQualityAntialiasing)
+            if self.scale < 1.0:
+                p.setRenderHint(QPainter.SmoothPixmapTransform)
+                
+            p.scale(self.scale, self.scale)
+            p.translate(self.offsetToCenter())
 
-        p.drawPixmap(0, 0, self.pixmap)
-        Shape.scale = self.scale
-        # Use snapshot list to prevent disappearing shapes due to concurrent modifications
-        for shape in list(self.shapes):
-            if (shape.selected or not self._hideBackround) and self.isVisible(shape):
-                if (shape.isRotated and not self.hideRotated) or (not shape.isRotated and not self.hideNormal):
-                    shape.fill = shape.selected or shape == self.hShape
-                    shape.paint(p)
-                elif self.showCenter:
-                    shape.fill = shape.selected or shape == self.hShape
-                    shape.paintNormalCenter(p)
-        if self.current:
-            self.current.paint(p)
-            self.line.paint(p)
-        if self.selectedShapeCopy:
-            self.selectedShapeCopy.paint(p)
+            p.drawPixmap(0, 0, self.pixmap)
+            Shape.scale = self.scale
+            # Use snapshot list to prevent disappearing shapes due to concurrent modifications
+            for shape in list(self.shapes):
+                if (shape.selected or not self._hideBackround) and self.isVisible(shape):
+                    if (shape.isRotated and not self.hideRotated) or (not shape.isRotated and not self.hideNormal):
+                        shape.fill = shape.selected or shape == self.hShape
+                        shape.paint(p)
+                    elif self.showCenter:
+                        shape.fill = shape.selected or shape == self.hShape
+                        shape.paintNormalCenter(p)
+            if self.current:
+                self.current.paint(p)
+                self.line.paint(p)
+            if self.selectedShapeCopy:
+                self.selectedShapeCopy.paint(p)
 
-        # Paint rect
-        # Paint rect
-        if self.current is not None and len(self.line) == 2:
-            leftTop = self.line[0]
-            rightBottom = self.line[1]
-            rectWidth = rightBottom.x() - leftTop.x()
-            rectHeight = rightBottom.y() - leftTop.y()
-            p.setPen(self.drawingRectColor)
-            brush = QBrush(Qt.BDiagPattern)
-            p.setBrush(brush)
-            # p.drawRect(leftTop.x(), leftTop.y(), rectWidth, rectHeight)
-            p.drawRect(int(leftTop.x()), int(leftTop.y()), int(rectWidth), int(rectHeight))
+            # Paint rect
+            if self.current is not None and len(self.line) == 2:
+                leftTop = self.line[0]
+                rightBottom = self.line[1]
+                rectWidth = rightBottom.x() - leftTop.x()
+                rectHeight = rightBottom.y() - leftTop.y()
+                p.setPen(self.drawingRectColor)
+                brush = QBrush(Qt.BDiagPattern)
+                p.setBrush(brush)
+                p.drawRect(int(leftTop.x()), int(leftTop.y()), int(rectWidth), int(rectHeight))
 
-        # 智能吸附成框动态视觉特效
-        if self.snapping_active:
-            self._paint_snapping_effect(p)
+            # 智能吸附成框动态视觉特效
+            if self.snapping_active:
+                self._paint_snapping_effect(p)
 
-        if (self.drawing() or self.continueDrawing() or self.smartClicking()) and not self.prevPoint.isNull() and not self.outOfPixmap(self.prevPoint):
-            oldmode = p.compositionMode()
-            p.setCompositionMode(QPainter.RasterOp_SourceXorDestination)
-            p.setPen(QPen(QColor(255,255,255), 1/self.scale)) # TODO : limit pen width
+            if (self.drawing() or self.continueDrawing() or self.smartClicking()) and not self.prevPoint.isNull() and not self.outOfPixmap(self.prevPoint):
+                oldmode = p.compositionMode()
+                p.setCompositionMode(QPainter.RasterOp_SourceXorDestination)
+                p.setPen(QPen(QColor(255,255,255), 1/self.scale)) # TODO : limit pen width
 
-            # p.drawLine(self.prevPoint.x(), 0, self.prevPoint.x(), self.pixmap.height())
-            p.drawLine(int(self.prevPoint.x()), 0, int(self.prevPoint.x()), int(self.pixmap.height()))
-            # p.drawLine(0, self.prevPoint.y(), self.pixmap.width(), self.prevPoint.y())
-            p.drawLine(0, int(self.prevPoint.y()), self.pixmap.width(), int(self.prevPoint.y()))
-            p.setCompositionMode(oldmode)
-
-        self.setAutoFillBackground(True)
-        if self.verified:
-            pal = self.palette()
-            pal.setColor(self.backgroundRole(), QColor(184, 239, 38, 128))
-            self.setPalette(pal)
-        else:
-            pal = self.palette()
-            pal.setColor(self.backgroundRole(), QColor(232, 232, 232, 255))
-            self.setPalette(pal)
-
-        p.end()
+                p.drawLine(int(self.prevPoint.x()), 0, int(self.prevPoint.x()), int(self.pixmap.height()))
+                p.drawLine(0, int(self.prevPoint.y()), self.pixmap.width(), int(self.prevPoint.y()))
+                p.setCompositionMode(oldmode)
+        finally:
+            p.end()
 
     def startSnappingAnimation(self, click_pos, target_rect, contour_pts=None, on_finish=None):
         """开启智能吸附成框动态视觉特效 (60 FPS 渐进展开与轮廓光晕)，动效完成或被打断时自动落地成框"""
@@ -1212,8 +1219,22 @@ class Canvas(QWidget):
 
         mods = ev.modifiers()
         if self.selectedShape:
-            # 选中框时，滚轮调整框的大小
+            # 选中框时，滚轮调整框的大小，增加安全边界保护（防止坐标无限膨胀或极小坍缩）
             factor = 1.05 if v_delta > 0 else 0.95
+            points = self.selectedShape.points
+            if points and len(points) >= 4:
+                xs = [pt.x() for pt in points]
+                ys = [pt.y() for pt in points]
+                w = max(xs) - min(xs)
+                h = max(ys) - min(ys)
+                max_w = (self.pixmap.width() * 2.0) if self.pixmap else 10000.0
+                max_h = (self.pixmap.height() * 2.0) if self.pixmap else 10000.0
+                if factor < 1.0 and (w * factor < 4.0 or h * factor < 4.0):
+                    ev.accept()
+                    return
+                if factor > 1.0 and (w * factor > max_w or h * factor > max_h):
+                    ev.accept()
+                    return
             self.selectedShape.scaleBy(factor)
             self.shapeMoved.emit()
             self.update()

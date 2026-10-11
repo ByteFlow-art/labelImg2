@@ -375,6 +375,14 @@ class MainWindow(QMainWindow, WindowMixin):
             Qt.Horizontal: scroll.horizontalScrollBar()
         }
         self.scrollArea = scroll
+        # 滚轮平滑节流与防黑屏安全机制 (Coalesced 60 FPS Zoom Throttle)
+        self._zoom_coalesce_timer = QTimer(self)
+        self._zoom_coalesce_timer.setSingleShot(True)
+        self._zoom_coalesce_timer.setInterval(16)
+        self._zoom_coalesce_timer.timeout.connect(self._apply_coalesced_zoom)
+        self._pending_zoom_increment = 0.0
+        self._pending_zoom_cursor_pos = None
+
         self.canvas.scrollRequest.connect(self.scrollRequest)
 
         self.canvas.newShape.connect(self.newShape)
@@ -1826,56 +1834,63 @@ class MainWindow(QMainWindow, WindowMixin):
         self.setZoom(self.zoomWidget.value() + increment)
 
     def zoomRequest(self, delta):
-        # get the current scrollbar positions
-        # calculate the percentages ~ coordinates
-        h_bar = self.scrollBars[Qt.Horizontal]
-        v_bar = self.scrollBars[Qt.Vertical]
+        # 滚轮缩放事件平滑节流与合并，防止低配电脑快速滚动导致显存溢出与显卡驱动TDR黑屏闪退
+        units = delta / (8.0 * 15.0)
+        scale = 10.0
+        increment = scale * units
 
-        # get the current maximum, to know the difference after zooming
-        h_bar_max = h_bar.maximum()
-        v_bar_max = v_bar.maximum()
-
-        # get the cursor position and canvas size
-        # calculate the desired movement from 0 to 1
-        # where 0 = move left
-        #       1 = move right
-        # up and down analogous
         cursor = QCursor()
         pos = cursor.pos()
         relative_pos = QWidget.mapFromGlobal(self, pos)
 
-        cursor_x = relative_pos.x()
-        cursor_y = relative_pos.y()
+        self._pending_zoom_increment += increment
+        self._pending_zoom_cursor_pos = (relative_pos.x(), relative_pos.y())
 
-        w = self.scrollArea.width()
-        h = self.scrollArea.height()
+        if not self._zoom_coalesce_timer.isActive():
+            self._zoom_coalesce_timer.start(16)
 
-        # the scaling from 0 to 1 has some padding
-        # you don't have to hit the very leftmost pixel for a maximum-left movement
+    def _apply_coalesced_zoom(self):
+        if abs(self._pending_zoom_increment) < 0.01:
+            self._pending_zoom_increment = 0.0
+            return
+
+        h_bar = self.scrollBars[Qt.Horizontal]
+        v_bar = self.scrollBars[Qt.Vertical]
+        h_bar_max = h_bar.maximum()
+        v_bar_max = v_bar.maximum()
+
+        w = max(1.0, float(self.scrollArea.width()))
+        h = max(1.0, float(self.scrollArea.height()))
         margin = 0.1
-        move_x = (cursor_x - margin * w) / (w - 2 * margin * w)
-        move_y = (cursor_y - margin * h) / (h - 2 * margin * h)
+        cursor_x, cursor_y = self._pending_zoom_cursor_pos if self._pending_zoom_cursor_pos else (w / 2.0, h / 2.0)
+        move_x = (cursor_x - margin * w) / max(1.0, (w - 2.0 * margin * w))
+        move_y = (cursor_y - margin * h) / max(1.0, (h - 2.0 * margin * h))
+        move_x = min(max(move_x, 0.0), 1.0)
+        move_y = min(max(move_y, 0.0), 1.0)
 
-        # clamp the values from 0 to 1
-        move_x = min(max(move_x, 0), 1)
-        move_y = min(max(move_y, 0), 1)
+        cur_val = self.zoomWidget.value()
+        target_val = cur_val + self._pending_zoom_increment
+        self._pending_zoom_increment = 0.0
 
-        # zoom in
-        units = delta / (8 * 15)
-        scale = 10
-        self.addZoom(scale * units)
+        # 安全上限检测：防止巨幅位图导致显存/GDI溢出 (最大单边 12,000 像素安全保护)
+        max_zoom = 500
+        if self.canvas.pixmap and not self.canvas.pixmap.isNull():
+            pw = self.canvas.pixmap.width()
+            ph = self.canvas.pixmap.height()
+            max_dim = max(pw, ph)
+            if max_dim > 0:
+                safe_max_zoom = int((12000.0 / max_dim) * 100)
+                max_zoom = min(500, max(50, safe_max_zoom))
 
-        # get the difference in scrollbar values
-        # this is how far we can move
-        d_h_bar_max = h_bar.maximum() - h_bar_max
-        d_v_bar_max = v_bar.maximum() - v_bar_max
-
-        # get the new scrollbar values
-        new_h_bar_value = h_bar.value() + move_x * d_h_bar_max
-        new_v_bar_value = v_bar.value() + move_y * d_v_bar_max
-
-        h_bar.setValue(new_h_bar_value)
-        v_bar.setValue(new_v_bar_value)
+        clamped_val = int(round(min(max(target_val, 1), max_zoom)))
+        if clamped_val != cur_val:
+            self.setZoom(clamped_val)
+            d_h_bar_max = h_bar.maximum() - h_bar_max
+            d_v_bar_max = v_bar.maximum() - v_bar_max
+            new_h_bar_value = int(round(h_bar.value() + move_x * d_h_bar_max))
+            new_v_bar_value = int(round(v_bar.value() + move_y * d_v_bar_max))
+            h_bar.setValue(new_h_bar_value)
+            v_bar.setValue(new_v_bar_value)
 
     def setFitWindow(self, value=True):
         if value:

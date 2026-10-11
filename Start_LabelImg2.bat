@@ -36,8 +36,13 @@ if exist "%CACHE_FILE%" (
     set "CACHED_PYTHON="
     set /p CACHED_PYTHON=<"%CACHE_FILE%"
     if defined CACHED_PYTHON if exist "!CACHED_PYTHON!" (
-        start "" "!CACHED_PYTHON!" "%SCRIPT_DIR%\%APP_FILE%"
-        exit /b 0
+        "!CACHED_PYTHON!" -c "import PyQt5, lxml, PIL" >nul 2>&1
+        if !errorlevel! EQU 0 (
+            start "" "!CACHED_PYTHON!" "%SCRIPT_DIR%\%APP_FILE%"
+            exit /b 0
+        ) else (
+            del /f /q "%CACHE_FILE%" >nul 2>&1
+        )
     )
 )
 
@@ -247,6 +252,14 @@ if exist "%SCRIPT_DIR%\setup_env.bat" (
         if not defined TARGET_PYTHON if exist "%%~P" (
             "%%~P" -c "import PyQt5, lxml, PIL" >nul 2>&1
             if !errorlevel! EQU 0 set "TARGET_PYTHON=%%~P"
+        )
+    )
+
+    if exist "%CACHE_FILE%" (
+        set /p CACHED_PYTHON=<"%CACHE_FILE%"
+        if defined CACHED_PYTHON if exist "!CACHED_PYTHON!" (
+            start "" "!CACHED_PYTHON!" "%SCRIPT_DIR%\%APP_FILE%"
+            exit /b 0
         )
     )
 

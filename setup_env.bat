@@ -231,8 +231,11 @@ if not defined PYTHON_EXE (
             set "CANDIDATE=%%~fI"
             echo !CANDIDATE! | findstr /i /c:"WindowsApps" >nul
             if errorlevel 1 (
-                set "PYTHON_EXE=!CANDIDATE!"
-                echo [OK] Found system PATH Python: !PYTHON_EXE!
+                "!CANDIDATE!" -c "import sys; assert sys.version_info >= (3, 7)" >nul 2>&1
+                if !errorlevel! EQU 0 (
+                    set "PYTHON_EXE=!CANDIDATE!"
+                    echo [OK] Found system PATH Python: !PYTHON_EXE!
+                )
             )
         )
     )
@@ -391,27 +394,52 @@ echo [Step 3/5] Configuring pip package manager (Tencent / Tsinghua mirror)...
 "!RUN_PYTHON!" -m pip install --upgrade pip -i !PIP_INDEX! !TRUSTED_HOST! >nul 2>&1
 
 REM ------------------------------------------------------------------------------
-REM Step 4/5: Installing core dependencies (PyQt5, OpenCV, Pillow, lxml, pyyaml, numpy)
+REM Step 4/5: Installing dependencies (Tiered resilient installation)
 REM ------------------------------------------------------------------------------
 echo.
-echo [Step 4/5] Checking and installing unified dependencies from requirements.txt...
+echo [Step 4/5] Checking and installing unified dependencies...
 
-REM Fast check: If already present, skip download!
-"!RUN_PYTHON!" -c "import PyQt5, cv2, PIL, lxml, yaml, numpy, torch, ultralytics" >nul 2>&1
+REM Tier 1: Core Essential Dependencies (PyQt5, OpenCV, Pillow, lxml, pyyaml, yamlloader, numpy)
+REM These total less than 50MB and take only seconds to download.
+echo [*] Checking core labeling dependencies (PyQt5, OpenCV, Pillow, lxml, YAML, NumPy)...
+"!RUN_PYTHON!" -c "import PyQt5, cv2, PIL, lxml, yaml, numpy" >nul 2>&1
 if !errorlevel! EQU 0 (
-    echo [OK] All unified dependencies are already pre-installed and verified!
-    goto verify_step
+    echo [OK] Core labeling dependencies are already verified!
+) else (
+    echo [*] Installing core labeling dependencies from mirror...
+    "!RUN_PYTHON!" -m pip install "PyQt5>=5.15.0" "opencv-python-headless>=4.7.0" "Pillow>=9.5.0" "lxml>=4.9.0" "pyyaml>=6.0.0" "yamlloader>=0.5.5" "numpy>=1.23.0" -i !PIP_INDEX! !TRUSTED_HOST!
+    if errorlevel 1 (
+        echo [Retry] Retrying core dependencies with Aliyun mirror...
+        "!RUN_PYTHON!" -m pip install "PyQt5>=5.15.0" "opencv-python-headless>=4.7.0" "Pillow>=9.5.0" "lxml>=4.9.0" "pyyaml>=6.0.0" "yamlloader>=0.5.5" "numpy>=1.23.0" -i http://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
+    )
 )
 
-echo [*] Installing dependencies from requirements.txt (PyQt5, OpenCV, Torch, Ultralytics)...
-"!RUN_PYTHON!" -m pip install -r "%SCRIPT_DIR%\requirements.txt" -i !PIP_INDEX! !TRUSTED_HOST!
+REM Verify core dependencies strictly
+"!RUN_PYTHON!" -c "import PyQt5, cv2, PIL, lxml, yaml, numpy" >nul 2>&1
 if errorlevel 1 (
-    echo [Retry] Retrying with Aliyun mirror...
-    "!RUN_PYTHON!" -m pip install -r "%SCRIPT_DIR%\requirements.txt" -i http://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
+    echo [ERROR] Failed to install core labeling dependencies.
+    if "%IS_AUTO_MODE%"=="0" pause
+    exit /b 1
+)
+echo [OK] Core labeling engine is 100%% ready!
+
+REM Tier 2: AI Model Center & Deep Learning Extension (Torch, Ultralytics)
+REM Optional / resilient step: Never fail the entire installation if network times out downloading huge PyTorch!
+echo.
+echo [*] Checking AI model engine extension (Torch, Ultralytics)...
+"!RUN_PYTHON!" -c "import torch, ultralytics" >nul 2>&1
+if !errorlevel! EQU 0 (
+    echo [OK] AI deep learning extension is already verified!
+) else (
+    echo [*] Attempting to install lightweight AI extension packages...
+    REM Try lightweight CPU PyTorch or standard from mirror
+    "!RUN_PYTHON!" -m pip install ultralytics torch torchvision --extra-index-url https://download.pytorch.org/whl/cpu -i !PIP_INDEX! !TRUSTED_HOST! --default-timeout=60
     if errorlevel 1 (
-        echo [ERROR] Failed to install dependencies from requirements.txt.
-        if "%IS_AUTO_MODE%"=="0" pause
-        exit /b 1
+        echo [NOTICE] AI extension package download timed out or skipped.
+        echo [NOTICE] LabelImg2 core labeling & format conversion is 100%% fully operational!
+        echo [NOTICE] You can run and use LabelImg2 immediately. AI models can be complemented later in YOLO Model Center.
+    ) else (
+        echo [OK] AI model engine extension installed successfully!
     )
 )
 
