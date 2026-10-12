@@ -27,6 +27,34 @@ set "IS_PORTABLE_ENV=0"
 set "PIP_INDEX=https://mirrors.cloud.tencent.com/pypi/simple"
 set "TRUSTED_HOST=--trusted-host mirrors.cloud.tencent.com"
 
+REM Proactively check and bypass dead localhost proxies (e.g. 127.0.0.1:7890) left by closed VPN/Clash
+if not defined HTTP_PROXY goto check_https_proxy
+echo !HTTP_PROXY! | findstr /i "127.0.0.1 localhost" >nul 2>&1
+if errorlevel 1 goto check_https_proxy
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$u = [System.Uri]$env:HTTP_PROXY; $t = New-Object System.Net.Sockets.TcpClient; try { $t.Connect($u.Host, $u.Port); $t.Close(); exit 0 } catch { exit 1 }" >nul 2>&1
+if errorlevel 1 (
+    echo [NOTICE] Inactive local proxy detected. Bypassing HTTP_PROXY...
+    set "HTTP_PROXY="
+    set "http_proxy="
+    set "ALL_PROXY="
+    set "all_proxy="
+)
+
+:check_https_proxy
+if not defined HTTPS_PROXY goto proxy_checked
+echo !HTTPS_PROXY! | findstr /i "127.0.0.1 localhost" >nul 2>&1
+if errorlevel 1 goto proxy_checked
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$u = [System.Uri]$env:HTTPS_PROXY; $t = New-Object System.Net.Sockets.TcpClient; try { $t.Connect($u.Host, $u.Port); $t.Close(); exit 0 } catch { exit 1 }" >nul 2>&1
+if errorlevel 1 (
+    echo [NOTICE] Inactive local proxy detected. Bypassing HTTPS_PROXY...
+    set "HTTPS_PROXY="
+    set "https_proxy="
+    set "ALL_PROXY="
+    set "all_proxy="
+)
+
+:proxy_checked
+
 echo.
 echo ==============================================================================
 echo            LabelImg2 Next-Gen - Automated Environment Setup
@@ -361,6 +389,10 @@ REM Step 3/5: Upgrading pip and setting up mirror sources
 REM ------------------------------------------------------------------------------
 echo.
 echo [Step 3/5] Configuring pip package manager - Tencent / Tsinghua mirror...
+"!RUN_PYTHON!" -m pip config set global.index-url !PIP_INDEX! >nul 2>&1
+"!RUN_PYTHON!" -m pip config set global.trusted-host mirrors.cloud.tencent.com >nul 2>&1
+"!RUN_PYTHON!" -m pip config set global.timeout 25 >nul 2>&1
+"!RUN_PYTHON!" -m pip config set global.retries 2 >nul 2>&1
 "!RUN_PYTHON!" -m pip install --upgrade pip -i !PIP_INDEX! !TRUSTED_HOST! >nul 2>&1
 
 REM ------------------------------------------------------------------------------
@@ -378,10 +410,10 @@ if !errorlevel! EQU 0 (
 )
 
 echo [*] Installing core labeling dependencies from mirror...
-"!RUN_PYTHON!" -m pip install "PyQt5>=5.15.0" "opencv-python-headless>=4.7.0" "Pillow>=9.5.0" "lxml>=4.9.0" "pyyaml>=6.0.0" "yamlloader>=0.5.5" "numpy>=1.23.0" -i !PIP_INDEX! !TRUSTED_HOST!
+"!RUN_PYTHON!" -m pip install "PyQt5>=5.15.0" "opencv-python-headless>=4.7.0" "Pillow>=9.5.0" "lxml>=4.9.0" "pyyaml>=6.0.0" "yamlloader>=0.5.5" "numpy>=1.23.0" -i !PIP_INDEX! !TRUSTED_HOST! --retries 2 --default-timeout=25
 if errorlevel 1 (
     echo [Retry] Retrying core dependencies with Aliyun mirror...
-    "!RUN_PYTHON!" -m pip install "PyQt5>=5.15.0" "opencv-python-headless>=4.7.0" "Pillow>=9.5.0" "lxml>=4.9.0" "pyyaml>=6.0.0" "yamlloader>=0.5.5" "numpy>=1.23.0" -i http://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
+    "!RUN_PYTHON!" -m pip install "PyQt5>=5.15.0" "opencv-python-headless>=4.7.0" "Pillow>=9.5.0" "lxml>=4.9.0" "pyyaml>=6.0.0" "yamlloader>=0.5.5" "numpy>=1.23.0" -i http://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com --retries 2 --default-timeout=25
 )
 
 "!RUN_PYTHON!" -c "import PyQt5, cv2, PIL, lxml, yaml, numpy" >nul 2>&1
@@ -403,10 +435,14 @@ if !errorlevel! EQU 0 (
     goto verify_step
 )
 
-echo [*] Attempting to install lightweight AI extension packages...
-"!RUN_PYTHON!" -m pip install ultralytics torch torchvision --extra-index-url https://download.pytorch.org/whl/cpu -i !PIP_INDEX! !TRUSTED_HOST! --default-timeout=60
+echo [*] Installing AI model engine extension from domestic mirror...
+"!RUN_PYTHON!" -m pip install ultralytics torch torchvision -i !PIP_INDEX! !TRUSTED_HOST! --retries 2 --default-timeout=25
 if errorlevel 1 (
-    echo [NOTICE] AI extension package download timed out or skipped.
+    echo [Retry] Retrying AI extension with Aliyun mirror...
+    "!RUN_PYTHON!" -m pip install ultralytics torch torchvision -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com --retries 2 --default-timeout=25
+)
+if errorlevel 1 (
+    echo [NOTICE] AI extension package download timed out or skipped due to network bandwidth.
     echo [NOTICE] LabelImg2 core labeling and format conversion is 100%% fully operational!
     echo [NOTICE] You can run and use LabelImg2 immediately. AI models can be complemented later in YOLO Model Center.
 ) else (
