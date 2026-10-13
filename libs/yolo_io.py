@@ -25,10 +25,7 @@ class YoloReader(object):
         self.parse_yolo()
 
     def _resolve_class_list(self, filepath, classList=None):
-        if classList and len(classList) > 0:
-            return list(classList)
-
-        # Check for classes.txt in common directories
+        # 1. 最高优先级：检查数据集自身标注所在目录或上级目录的 classes.txt (就近真值优先，排解多项目冲突的核心基石)
         search_dirs = [
             os.path.dirname(filepath),
             os.path.dirname(os.path.dirname(filepath)),
@@ -47,17 +44,22 @@ class YoloReader(object):
                 except Exception:
                     pass
 
-        # Fallback to predefined classes if available
+        # 2. 次优先级：使用当前激活/传入的标签组列表
+        if classList and len(classList) > 0:
+            return list(classList)
+
+        # 3. 回退：扫描 data/ 目录下的预定义标签文件
         root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        predefined = os.path.join(root_dir, "data", "predefined_classes.txt")
-        if os.path.isfile(predefined):
-            try:
-                with open(predefined, 'r', encoding='utf-8', errors='ignore') as f:
-                    lines = [line.strip() for line in f.readlines() if line.strip()]
-                if lines:
-                    return lines
-            except Exception:
-                pass
+        for fn in ["predefined_classes.txt", "predefined_classes1.txt", "predefined_classes2.txt"]:
+            predefined = os.path.join(root_dir, "data", fn)
+            if os.path.isfile(predefined):
+                try:
+                    with open(predefined, 'r', encoding='utf-8', errors='ignore') as f:
+                        lines = [line.strip() for line in f.readlines() if line.strip()]
+                    if lines:
+                        return lines
+                except Exception:
+                    pass
 
         return []
 
@@ -263,4 +265,12 @@ class YoloWriter(object):
         with open(targetFile, 'w', encoding='utf-8') as f:
             f.writelines(lines)
 
-        # Do not automatically litter/overwrite classes.txt in the dataset label directory on every image save
+        # 自动在标注目录维护 classes.txt，确保数据集自包含与跨设备/跨标签组不失真
+        classes_file = os.path.join(out_dir, "classes.txt")
+        if not os.path.exists(classes_file) and self.classList:
+            try:
+                with open(classes_file, 'w', encoding='utf-8') as cf:
+                    for c in self.classList:
+                        cf.write(f"{c}\n")
+            except Exception:
+                pass

@@ -1362,7 +1362,7 @@ class MainWindow(QMainWindow, WindowMixin):
         if hasattr(self, 'menus') and hasattr(self.menus, 'saveFormat'):
             self.menus.saveFormat.exec_(QCursor.pos())
 
-    def on_labels_applied(self, labels, default_label, chosen_file=""):
+    def on_labels_applied(self, labels, default_label, chosen_file="", reload_current=True):
         """响应 Manage Labels 窗口非模态应用/保存事件，平滑同步主窗口状态"""
         if labels is not None:
             self.labelHist = list(labels)
@@ -1374,11 +1374,58 @@ class MainWindow(QMainWindow, WindowMixin):
             if chosen_file and os.path.isfile(chosen_file):
                 self.current_label_file = chosen_file
                 self.settings['current_label_file'] = chosen_file
+                if hasattr(self, 'dirname') and self.dirname:
+                    folder_map = self.settings.get('folder_label_map', {})
+                    folder_map[self.dirname] = chosen_file
+                    self.settings['folder_label_map'] = folder_map
                 self.settings.save()
 
             self.labelList.updateLabelList(self.labelHist)
             group_name = os.path.basename(getattr(self, 'current_label_file', '')) if getattr(self, 'current_label_file', None) else "自定义"
             self.statusBar().showMessage(f"已应用标签组 [{group_name}] (共 {len(self.labelHist)} 个类别，当前默认: {self.default_label})", 4000)
+
+            # 切换标签组时重载当前画面的标注，杜绝内存旧标签悬空残留与错乱
+            if reload_current and hasattr(self, 'filePath') and self.filePath and os.path.isfile(self.filePath):
+                self.reloadCurrentAnnotations()
+
+    def reloadCurrentAnnotations(self):
+        """重新解析并加载当前图片的标注，确保画布、右侧列表与新标签组严密对齐"""
+        if not hasattr(self, 'filePath') or not self.filePath or not os.path.isfile(self.filePath):
+            return
+        if not hasattr(self, 'image') or self.image is None or self.image.isNull():
+            return
+        from libs.annotation_io import find_annotation_file, read_annotations
+        anno_file, detected_fmt = find_annotation_file(
+            image_path=self.filePath,
+            preferred_format=self.save_format,
+            save_dir=self.defaultSaveDir,
+            image_dir=self.dirname
+        )
+        img_shape = (self.image.height(), self.image.width(), 3)
+        self.resetState()
+        self.canvas.loadPixmap(QPixmap.fromImage(self.image))
+        if anno_file and os.path.isfile(anno_file):
+            loaded_shapes = read_annotations(
+                file_path=anno_file,
+                format_name=detected_fmt,
+                image_shape=img_shape,
+                class_list=getattr(self, 'labelHist', None),
+                image_path=self.filePath
+            )
+            if loaded_shapes:
+                self.loadLabels(loaded_shapes)
+            self.current_annotation_file = anno_file
+            self.current_annotation_format = detected_fmt
+            # 检测是否处于跨组预览冲突状态
+            current_set = set(self.labelHist) if (hasattr(self, 'labelHist') and self.labelHist) else set()
+            shape_set = {s[0] for s in loaded_shapes if isinstance(s, (list, tuple)) and len(s) > 0}
+            if shape_set and not shape_set.issubset(current_set):
+                self.is_conflict_preview = True
+                self.statusBar().showMessage("⚠️【只读安全预览】当前标注类别与当前标签组不一致，已开启防损保护（禁止自动保存覆盖）", 5000)
+            else:
+                self.is_conflict_preview = False
+        self.setClean()
+        self.paintCanvas()
 
     def editLabel(self):
         if hasattr(self, 'canvas') and self.canvas.drawing():
@@ -1394,6 +1441,10 @@ class MainWindow(QMainWindow, WindowMixin):
     def fileCurrentChanged(self, current, previous):
         self.statFile.setText('{0}/{1}'.format(current.row()+1, current.model().rowCount()))
         if self.autoSaving.isChecked():
+            if getattr(self, 'is_conflict_preview', False):
+                self.statusBar().showMessage("【只读预览保护】当前图片与激活标签组不同，已拦截自动保存，保护原标签不被篡改", 3500)
+                return
+
             if self.defaultSaveDir is not None:
                 self.labelList.earlyCommit()
                 format_mismatched = (
@@ -1986,9 +2037,12 @@ class MainWindow(QMainWindow, WindowMixin):
                     self.loadLabels(loaded_shapes)
                 self.current_annotation_file = anno_file
                 self.current_annotation_format = detected_fmt
+                # 智能排解跨项目/跨标签组冲突
+                self.resolve_label_conflict(anno_file, loaded_shapes)
             else:
                 self.current_annotation_file = None
                 self.current_annotation_format = None
+                self.is_conflict_preview = False
 
             # 实时同步并高亮刷新右下侧照片列表中的选中状态与序号统计
             if hasattr(self, 'fileModel') and self.fileModel and self.fileModel.rowCount() > 0:
@@ -2018,6 +2072,178 @@ class MainWindow(QMainWindow, WindowMixin):
         self.update_stats()
         return False
 
+
+    def resolve_label_conflict(self, anno_file, loaded_shapes):
+        """排解跨项目/跨标签组冲突核心机制：就近真值对齐、智能识别匹配与安全只读防损"""
+        if not anno_file or not loaded_shapes:
+            self.is_conflict_preview = False
+            return
+
+        detected_labels = []
+        for s in loaded_shapes:
+            lab = s[0] if (isinstance(s, (list, tuple)) and len(s) > 0) else getattr(s, 'label', None)
+            if lab and str(lab) not in detected_labels:
+                detected_labels.append(str(lab))
+
+        # 1. 查找项目/标注本地的 classes.txt
+        local_classes = None
+        local_cf_path = None
+        anno_dir = os.path.dirname(os.path.abspath(anno_file))
+        search_dirs = [
+            anno_dir,
+            os.path.dirname(anno_dir),
+            getattr(self, 'defaultSaveDir', None),
+            getattr(self, 'dirname', None)
+        ]
+        for d in search_dirs:
+            if d and os.path.isdir(d):
+                cf = os.path.join(d, "classes.txt")
+                if os.path.isfile(cf):
+                    try:
+                        with codecs.open(cf, 'r', 'utf8', errors='ignore') as f:
+                            lines = [line.strip() for line in f if line.strip()]
+                        if lines:
+                            local_classes = lines
+                            local_cf_path = cf
+                            break
+                    except Exception:
+                        pass
+
+        # 2. 判断当前激活标签组是否与标注内容完全兼容
+        current_classes = getattr(self, 'labelHist', []) or []
+        current_set = set(current_classes)
+        detected_set = set(detected_labels)
+
+        if local_classes and local_classes == current_classes:
+            self.is_conflict_preview = False
+            return
+        if not local_classes and detected_set.issubset(current_set):
+            self.is_conflict_preview = False
+            return
+
+        # 3. 发生不一致冲突！尝试智能匹配 data/ 下的预定义标签组
+        target_classes = local_classes if local_classes else detected_labels
+        target_set = set(target_classes)
+
+        matched_file = None
+        matched_classes = None
+        data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+        if os.path.isdir(data_dir):
+            for fname in sorted(os.listdir(data_dir)):
+                if fname.lower().endswith(".txt"):
+                    fpath = os.path.join(data_dir, fname)
+                    try:
+                        with codecs.open(fpath, 'r', 'utf8', errors='ignore') as f:
+                            flines = [line.strip() for line in f if line.strip()]
+                        if flines == target_classes:
+                            matched_file = fpath
+                            matched_classes = flines
+                            break
+                        elif target_set and target_set.issubset(set(flines)):
+                            if matched_file is None:
+                                matched_file = fpath
+                                matched_classes = flines
+                    except Exception:
+                        pass
+
+        # 4. 执行排解冲突逻辑
+        if matched_file and matched_classes:
+            self.on_labels_applied(
+                matched_classes,
+                default_label=matched_classes[0],
+                chosen_file=matched_file,
+                reload_current=False
+            )
+            self.is_conflict_preview = False
+            group_name = os.path.basename(matched_file)
+            self.statusBar().showMessage(f"【智能排解冲突】识别到标注所属标签组 [{group_name}]，已自动切换对齐！", 4500)
+            log_terminal(f"[标签冲突解决] 自动匹配切换标签组: {group_name}")
+            return
+        elif local_classes:
+            self.on_labels_applied(
+                local_classes,
+                default_label=local_classes[0],
+                chosen_file=local_cf_path,
+                reload_current=False
+            )
+            self.is_conflict_preview = False
+            self.statusBar().showMessage(f"【项目标签对齐】已自动同步当前数据集本地 classes.txt (共 {len(local_classes)} 类)", 4500)
+            log_terminal(f"[标签冲突解决] 自动同步本地 classes.txt (共 {len(local_classes)} 类)")
+            return
+        else:
+            self.is_conflict_preview = True
+            self.statusBar().showMessage("⚠️【跨组预览保护】当前图片标注与激活标签组不一致，已开启安全只读保护", 5000)
+            log_terminal("[安全保护] 检测到标签组冲突，已激活只读防损安全锁")
+
+    def detect_and_bind_project_label_group(self, dirpath, labels_dir=None):
+        """打开目录时，智能检测并就近绑定项目专属标签组，彻底避免跨项目标签冲突"""
+        if not dirpath or not os.path.isdir(dirpath):
+            return
+
+        # 1. 查找目录中的 classes.txt
+        found_classes = None
+        found_cf = None
+        search_dirs = [labels_dir, dirpath, os.path.join(dirpath, 'labels'), os.path.join(os.path.dirname(dirpath), 'labels')]
+        for d in search_dirs:
+            if d and os.path.isdir(d):
+                cf = os.path.join(d, "classes.txt")
+                if os.path.isfile(cf):
+                    try:
+                        with codecs.open(cf, 'r', 'utf8', errors='ignore') as f:
+                            lines = [line.strip() for line in f if line.strip()]
+                        if lines:
+                            found_classes = lines
+                            found_cf = cf
+                            break
+                    except Exception:
+                        pass
+
+        # 2. 如果存在本地 classes.txt，寻找 data/ 下的匹配文件或直接采用
+        if found_classes:
+            matched_file = None
+            data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+            if os.path.isdir(data_dir):
+                for fname in sorted(os.listdir(data_dir)):
+                    if fname.lower().endswith(".txt"):
+                        fpath = os.path.join(data_dir, fname)
+                        try:
+                            with codecs.open(fpath, 'r', 'utf8', errors='ignore') as f:
+                                flines = [line.strip() for line in f if line.strip()]
+                            if flines == found_classes:
+                                matched_file = fpath
+                                break
+                        except Exception:
+                            pass
+            if matched_file:
+                self.on_labels_applied(found_classes, default_label=found_classes[0], chosen_file=matched_file, reload_current=False)
+                self.statusBar().showMessage(f"【智能就近识别】项目已自动对齐标签组 [{os.path.basename(matched_file)}] (共 {len(found_classes)} 类)", 4500)
+                log_terminal(f"[项目就近绑定] 目录 {os.path.basename(dirpath)} 自动绑定标签组: {os.path.basename(matched_file)}")
+            else:
+                self.on_labels_applied(found_classes, default_label=found_classes[0], chosen_file=found_cf, reload_current=False)
+                self.statusBar().showMessage(f"【项目标签载入】已载入项目本地 classes.txt (共 {len(found_classes)} 类)", 4500)
+            return
+
+        # 3. 若无 classes.txt，检查是否有历史绑定记忆
+        folder_map = self.settings.get('folder_label_map', {})
+        if dirpath in folder_map:
+            saved_file = folder_map[dirpath]
+            if saved_file and os.path.isfile(saved_file):
+                try:
+                    with codecs.open(saved_file, 'r', 'utf8', errors='ignore') as f:
+                        lines = [line.strip() for line in f if line.strip()]
+                    if lines:
+                        self.on_labels_applied(lines, default_label=lines[0], chosen_file=saved_file, reload_current=False)
+                        self.statusBar().showMessage(f"【项目历史恢复】已恢复项目关联标签组 [{os.path.basename(saved_file)}]", 4000)
+                        log_terminal(f"[项目历史恢复] 恢复标签组: {os.path.basename(saved_file)}")
+                        return
+                except Exception:
+                    pass
+
+        # 4. 首次访问该目录，记录当前激活标签组
+        if hasattr(self, 'current_label_file') and self.current_label_file:
+            folder_map[dirpath] = self.current_label_file
+            self.settings['folder_label_map'] = folder_map
+            self.settings.save()
 
     def eventFilter(self, obj, event):
         if event.type() == QEvent.KeyPress:
@@ -2518,6 +2744,9 @@ class MainWindow(QMainWindow, WindowMixin):
         self.settings['last_save_dir'] = self.defaultSaveDir
         self.settings.save()
 
+        # 智能检测并就近绑定项目专属标签组，彻底避免跨项目标签冲突
+        self.detect_and_bind_project_label_group(dirpath, self.defaultSaveDir)
+
         imglist = self.scanAllImages(dirpath)
         self.fileModel.setStringList(imglist, self.dirname, self.defaultSaveDir)
 
@@ -2807,6 +3036,10 @@ class MainWindow(QMainWindow, WindowMixin):
             if reply != QMessageBox.Yes:
                 return False
 
+        if getattr(self, 'is_conflict_preview', False) and not prompt_empty:
+            self.statusBar().showMessage("【只读预览保护】当前图片标签与选定标签组不一致，已拦截自动保存", 3500)
+            return False
+
         if self.defaultSaveDir is not None and len(self.defaultSaveDir):
             if self.filePath:
                 if self.dirname is not None and os.path.exists(self.dirname):
@@ -2849,6 +3082,20 @@ class MainWindow(QMainWindow, WindowMixin):
 
     def saveFileAndRenderList(self, _value=False):
         """Save功能直接保存当前做的所有任务，不弹另存为对话框"""
+        if getattr(self, 'is_conflict_preview', False):
+            reply = QMessageBox.question(
+                self,
+                "标签组冲突确认",
+                "检测到当前画面的标注类别与当前选定的标签组不一致！\n\n"
+                "如果强制保存，原标注文件将被写为当前激活标签组，这可能会改写原类别映射。\n\n"
+                "确定要按当前标签组强制覆盖保存吗？",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            if reply != QMessageBox.Yes:
+                return
+            self.is_conflict_preview = False
+
         self.saveFile(_value=_value, prompt_empty=False)
         cur = self.filesm.currentIndex()
         if cur.isValid():
@@ -2864,6 +3111,13 @@ class MainWindow(QMainWindow, WindowMixin):
             ext = get_format_ext(self.save_format)
             saved_final_path = os.path.splitext(annotationFilePath)[0] + ext
             self.current_annotation_file = saved_final_path
+
+            # 记忆当前文件夹绑定的标签组
+            if hasattr(self, 'dirname') and self.dirname and hasattr(self, 'current_label_file') and self.current_label_file:
+                folder_map = self.settings.get('folder_label_map', {})
+                folder_map[self.dirname] = self.current_label_file
+                self.settings['folder_label_map'] = folder_map
+                self.settings.save()
 
             # 实现标签格式的替换：清理并替换同名其他旧格式标注文件（如 .xml / .txt / .json），避免格式冗余和读取冲突
             base_stem = os.path.splitext(annotationFilePath)[0]
