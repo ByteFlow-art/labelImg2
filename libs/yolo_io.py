@@ -99,8 +99,8 @@ class YoloReader(object):
             # Format 1: 5 values total: class_id cx cy bw bh (normalized or pixel)
             if len(coords) == 4:
                 cx, cy, bw, bh = coords
-                # If values are <= 1.0, they are normalized; if > 1.0, they might already be pixel values
-                if cx <= 1.0 and cy <= 1.0 and bw <= 1.0 and bh <= 1.0:
+                # If values are <= 2.0, they are normalized (allowing slight boundary overflow); otherwise already in pixels
+                if max(abs(cx), abs(cy), abs(bw), abs(bh)) <= 2.0:
                     cx *= w
                     cy *= h
                     bw *= w
@@ -118,7 +118,7 @@ class YoloReader(object):
             # Format 2: 6 values total: class_id cx cy bw bh angle
             elif len(coords) == 5:
                 cx, cy, bw, bh, angle = coords
-                if cx <= 1.0 and cy <= 1.0 and bw <= 1.0 and bh <= 1.0:
+                if max(abs(cx), abs(cy), abs(bw), abs(bh)) <= 2.0:
                     cx *= w
                     cy *= h
                     bw *= w
@@ -135,7 +135,7 @@ class YoloReader(object):
             # Format 3: 9 values total: class_id x1 y1 x2 y2 x3 y3 x4 y4 (YOLO OBB 8-points)
             elif len(coords) == 8:
                 x1, y1, x2, y2, x3, y3, x4, y4 = coords
-                if max(x1, x2, x3, x4) <= 1.0 and max(y1, y2, y3, y4) <= 1.0:
+                if max(abs(x1), abs(x2), abs(x3), abs(x4), abs(y1), abs(y2), abs(y3), abs(y4)) <= 2.0:
                     x1 *= w; x2 *= w; x3 *= w; x4 *= w
                     y1 *= h; y2 *= h; y3 *= h; y4 *= h
                 points = [(x1, y1), (x2, y2), (x3, y3), (x4, y4)]

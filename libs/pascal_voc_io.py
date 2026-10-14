@@ -216,10 +216,17 @@ class PascalVocReader:
         return self.filename
 
     def addShape(self, label, bndbox, difficult, extra=None):
-        xmin = int(eval(bndbox.find('xmin').text))
-        ymin = int(eval(bndbox.find('ymin').text))
-        xmax = int(eval(bndbox.find('xmax').text))
-        ymax = int(eval(bndbox.find('ymax').text))
+        xmin = float(eval(bndbox.find('xmin').text))
+        ymin = float(eval(bndbox.find('ymin').text))
+        xmax = float(eval(bndbox.find('xmax').text))
+        ymax = float(eval(bndbox.find('ymax').text))
+        # 兼容自适应反归一化 (若 XML 中误存了 0~1 的归一化坐标)
+        if max(abs(xmin), abs(ymin), abs(xmax), abs(ymax)) <= 1.5 and self.width > 10 and self.height > 10:
+            xmin *= self.width
+            ymin *= self.height
+            xmax *= self.width
+            ymax *= self.height
+        xmin, ymin, xmax, ymax = int(round(xmin)), int(round(ymin)), int(round(xmax)), int(round(ymax))
         points = [(xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax)]
         if extra is not None:
             self.shapes.append((label, points, None, None, difficult, extra))
@@ -232,6 +239,13 @@ class PascalVocReader:
         w = float(robndbox.find('w').text)
         h = float(robndbox.find('h').text)
         angle = float(robndbox.find('angle').text)
+
+        # 兼容自适应反归一化 (若 XML 中误存了 0~1 的归一化坐标)
+        if max(abs(cx), abs(cy), abs(w), abs(h)) <= 1.5 and self.width > 10 and self.height > 10:
+            cx *= self.width
+            cy *= self.height
+            w *= self.width
+            h *= self.height
 
         p0x,p0y = self.rotatePoint(cx,cy, cx - w/2, cy - h/2, -angle)
         p1x,p1y = self.rotatePoint(cx,cy, cx + w/2, cy - h/2, -angle)
